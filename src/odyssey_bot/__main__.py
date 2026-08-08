@@ -35,7 +35,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if command == "once":
-        run_monitor(once=True)
+        try:
+            run_monitor(once=True)
+        except Exception:
+            return 1
         return 0
 
     run_monitor(once=False)

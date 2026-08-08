@@ -8,7 +8,7 @@ from playwright.async_api import async_playwright
 
 from .config import Config, ROOT, load_config
 from .notifier import Notifier
-from .scraper import scan_all
+from .scraper import scan_all_sync
 from .state import StateStore
 
 
@@ -31,7 +31,7 @@ def run_monitor(config_path: Path | None = None, once: bool = False) -> None:
     while True:
         started = time.monotonic()
         try:
-            showtimes = scan_all(config)
+            showtimes = scan_all_sync(config)
             fresh = [st for st in showtimes if state.is_new(st.key)]
 
             if showtimes:
@@ -65,6 +65,8 @@ def run_monitor(config_path: Path | None = None, once: bool = False) -> None:
         except Exception as exc:  # noqa: BLE001
             notifier.status(f"Scan error: {exc}")
             interval = config.poll_interval_seconds
+            if once:
+                raise
 
         if once:
             return
