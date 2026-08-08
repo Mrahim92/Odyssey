@@ -2,8 +2,8 @@ name: Scan Lincoln Square
 
 on:
   schedule:
-    # Every 30 minutes
-    - cron: "*/30 * * * *"
+    # Every 10 minutes (scans finish in ~2 min with seat cache)
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 # Don't start a new scan while one is still running.
@@ -61,7 +61,7 @@ jobs:
             headless: true
             page_timeout_seconds: 30
             seat_check_delay_seconds: 1.0
-            seat_cache_ttl_minutes: 30
+            seat_cache_ttl_minutes: 15
           booking:
             min_seats: 4
             preferred_rows: [H, J, K, L, M]
