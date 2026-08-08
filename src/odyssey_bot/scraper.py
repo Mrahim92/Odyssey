@@ -6,9 +6,11 @@ from urllib.parse import urljoin
 
 from playwright.async_api import Browser, Page, async_playwright
 
+from .browser_helpers import block_heavy_assets
 from .config import Config
 from .format_match import is_imax_70mm
 from .models import Showtime, Theater
+from .state import StateStore
 
 # Patterns for matching showtime blocks in page text / links.
 TIME_RE = re.compile(
@@ -204,11 +206,13 @@ async def _enrich_with_seat_counts(
     browser: Browser,
     showtimes: list[Showtime],
     config: Config,
+    state: StateStore | None = None,
 ) -> list[Showtime]:
     import asyncio
 
     enriched: list[Showtime] = []
     seen_urls: set[str] = set()
+    skipped_cache = 0
     context = await browser.new_context(
         user_agent=(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -217,6 +221,7 @@ async def _enrich_with_seat_counts(
         )
     )
     page = await context.new_page()
+    await block_heavy_assets(page)
 
     try:
         for showtime in showtimes:
@@ -225,6 +230,28 @@ async def _enrich_with_seat_counts(
             if showtime.purchase_url in seen_urls:
                 continue
             seen_urls.add(showtime.purchase_url)
+
+            seats: int | None = None
+            if state is not None:
+                seats = state.get_cached_seats(
+                    showtime.purchase_url,
+                    config.min_seats,
+                    config.seat_cache_ttl_minutes,
+                )
+                if seats is not None:
+                    skipped_cache += 1
+                    if seats >= config.min_seats:
+                        enriched.append(
+                            Showtime(
+                                theater=showtime.theater,
+                                date=showtime.date,
+                                time=showtime.time,
+                                format_label=showtime.format_label,
+                                purchase_url=showtime.purchase_url,
+                                available_seats=seats,
+                            )
+                        )
+                    continue
 
             try:
                 await page.goto(
@@ -238,6 +265,8 @@ async def _enrich_with_seat_counts(
                     showtime.purchase_url,
                     config.preferred_rows or None,
                 )
+                if state is not None and seats is not None:
+                    state.cache_seats(showtime.purchase_url, seats)
                 if seats is not None and seats >= config.min_seats:
                     enriched.append(
                         Showtime(
@@ -257,7 +286,10 @@ async def _enrich_with_seat_counts(
     finally:
         await context.close()
 
-    print(f"[seats] Checked {len(seen_urls)} showtime(s), {len(enriched)} with {config.min_seats}+ seats")
+    print(
+        f"[seats] Checked {len(seen_urls) - skipped_cache} showtime(s) "
+        f"({skipped_cache} cached), {len(enriched)} with {config.min_seats}+ seats"
+    )
     return enriched
 
 
@@ -266,6 +298,7 @@ async def scan_theater_date(
     theater: Theater,
     scan_date: str,
     config: Config,
+    state: StateStore | None = None,
 ) -> list[Showtime]:
     url = _theater_url_for_date(theater, scan_date)
     context = await browser.new_context(
@@ -293,10 +326,10 @@ async def scan_theater_date(
     if not showtimes:
         return []
 
-    return await _enrich_with_seat_counts(browser, showtimes, config)
+    return await _enrich_with_seat_counts(browser, showtimes, config, state)
 
 
-async def scan_all(config: Config) -> list[Showtime]:
+async def scan_all(config: Config, state: StateStore | None = None) -> list[Showtime]:
     from .amc_scraper import scan_amc_theater
 
     found: list[Showtime] = []
@@ -308,9 +341,9 @@ async def scan_all(config: Config) -> list[Showtime]:
         async def run(theater: Theater, scan_date: str | None = None) -> list[Showtime]:
             async with semaphore:
                 if theater.chain.lower() == "amc":
-                    return await scan_amc_theater(browser, theater, config)
+                    return await scan_amc_theater(browser, theater, config, state)
                 assert scan_date is not None
-                return await scan_theater_date(browser, theater, scan_date, config)
+                return await scan_theater_date(browser, theater, scan_date, config, state)
 
         tasks: list = []
         for theater in config.theaters:
@@ -346,5 +379,5 @@ async def scan_all(config: Config) -> list[Showtime]:
     )
 
 
-def scan_all_sync(config: Config) -> list[Showtime]:
-    return asyncio.run(scan_all(config))
+def scan_all_sync(config: Config, state: StateStore | None = None) -> list[Showtime]:
+    return asyncio.run(scan_all(config, state))

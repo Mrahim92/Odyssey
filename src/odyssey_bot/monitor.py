@@ -37,7 +37,7 @@ def run_monitor(config_path: Path | None = None, once: bool = False) -> None:
     while True:
         started = time.monotonic()
         try:
-            showtimes = scan_all_sync(config)
+            showtimes = scan_all_sync(config, state)
             fresh = [st for st in showtimes if state.is_new(st.key)]
 
             if showtimes:
@@ -55,13 +55,14 @@ def run_monitor(config_path: Path | None = None, once: bool = False) -> None:
                 notifier.alert(fresh)
                 for st in fresh:
                     state.mark_seen(st.key)
-                state.save()
 
                 if config.auto_book:
                     from .booker import attempt_booking
 
                     for st in fresh:
                         attempt_booking(st, config)
+
+            state.save()
 
             interval = (
                 config.poll_interval_fast_seconds

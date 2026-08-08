@@ -30,6 +30,8 @@ monitor:
   page_timeout_seconds: 45
   # Delay between AMC seat-map page loads (seconds). Lower = faster but more rate limits.
   seat_check_delay_seconds: 1.5
+  # Skip re-checking showtimes that had 0 back-row seats within this many minutes.
+  seat_cache_ttl_minutes: 30
 
 booking:
   # Minimum contiguous seats required to trigger an alert.

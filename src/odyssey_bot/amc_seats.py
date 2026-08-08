@@ -124,7 +124,11 @@ async def count_amc_available_seats(
         return None
 
     await _dismiss_cookie_banner(page)
-    await page.wait_for_timeout(2500)
+
+    try:
+        await page.locator('label input[type="checkbox"]').first.wait_for(timeout=8000)
+    except Exception:
+        await page.wait_for_timeout(1000)
 
     body = (await page.locator("body").inner_text(timeout=5000)).lower()
     if "sold out" in body or "no seats available" in body:

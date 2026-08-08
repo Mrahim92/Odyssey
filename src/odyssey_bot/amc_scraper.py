@@ -7,10 +7,12 @@ from urllib.parse import urljoin
 
 from playwright.async_api import Browser, Page
 
+from .browser_helpers import block_heavy_assets
 from .config import Config
 from .format_match import is_imax_70mm
 from .models import Showtime, Theater
 from .scraper import TIME_RE, _enrich_with_seat_counts
+from .state import StateStore
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -53,7 +55,12 @@ async def _apply_amc_filters(page: Page) -> bool:
         return False
     await format_select.select_option(label=AMC_FORMAT_OPTION)
 
-    await page.wait_for_timeout(2000)
+    try:
+        await page.locator('section[aria-label*="Showtimes for The Odyssey" i]').first.wait_for(
+            timeout=5000
+        )
+    except Exception:
+        pass
     return True
 
 
@@ -112,6 +119,7 @@ async def scan_amc_theater(
     browser: Browser,
     theater: Theater,
     config: Config,
+    state: StateStore | None = None,
 ) -> list[Showtime]:
     """Scan an AMC theatre using its showtimes page filters and date dropdown."""
     allowed_dates = set(config.scan_dates)
@@ -120,6 +128,7 @@ async def scan_amc_theater(
 
     context = await browser.new_context(user_agent=USER_AGENT)
     page = await context.new_page()
+    await block_heavy_assets(page)
 
     try:
         await page.goto(
@@ -127,10 +136,10 @@ async def scan_amc_theater(
             wait_until="domcontentloaded",
             timeout=config.page_timeout_seconds * 1000,
         )
-        await page.wait_for_timeout(5000)
-
         date_select = page.locator("select").nth(1)
-        if await date_select.count() == 0:
+        try:
+            await date_select.wait_for(timeout=15000)
+        except Exception:
             return []
 
         if not await _apply_amc_filters(page):
@@ -138,7 +147,7 @@ async def scan_amc_theater(
             return []
 
         option_labels = await date_select.locator("option").all_inner_texts()
-        dates_checked = 0
+        dates_to_scan: list[tuple[str, str]] = []
         for label in option_labels:
             parsed = _parse_amc_date_label(label, today)
             if parsed is None:
@@ -146,10 +155,20 @@ async def scan_amc_theater(
             iso = parsed.isoformat()
             if iso not in allowed_dates:
                 continue
+            dates_to_scan.append((iso, label))
+        # September first — most likely drops, and partial runs prefer later dates.
+        dates_to_scan.sort(key=lambda item: item[0], reverse=True)
 
+        dates_checked = 0
+        for iso, label in dates_to_scan:
             dates_checked += 1
             await date_select.select_option(label=label)
-            await page.wait_for_timeout(1500)
+            try:
+                await page.locator(
+                    'section[aria-label*="Showtimes for The Odyssey" i]'
+                ).first.wait_for(timeout=3000)
+            except Exception:
+                continue
             found.extend(
                 await _extract_amc_showtimes_for_date(page, theater, iso)
             )
@@ -174,7 +193,7 @@ async def scan_amc_theater(
     if not found:
         return []
 
-    return await _enrich_with_seat_counts(browser, found, config)
+    return await _enrich_with_seat_counts(browser, found, config, state)
 
 
 async def count_amc_odyssey_70mm_slots(

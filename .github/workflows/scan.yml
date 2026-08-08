@@ -61,6 +61,7 @@ jobs:
             headless: true
             page_timeout_seconds: 30
             seat_check_delay_seconds: 1.0
+            seat_cache_ttl_minutes: 30
           booking:
             min_seats: 4
             preferred_rows: [H, J, K, L, M]
