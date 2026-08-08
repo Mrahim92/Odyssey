@@ -18,6 +18,7 @@ class Config:
     movie_title_match: list[str]
     format_match: list[str]
     days_ahead: int
+    end_date: date | None
     poll_interval_seconds: int
     poll_interval_fast_seconds: int
     concurrency: int
@@ -40,10 +41,19 @@ class Config:
     @property
     def scan_dates(self) -> list[str]:
         today = date.today()
-        return [
-            (today + timedelta(days=offset)).isoformat()
-            for offset in range(self.days_ahead + 1)
-        ]
+        if self.end_date is not None:
+            if today > self.end_date:
+                return []
+            last = self.end_date
+        else:
+            last = today + timedelta(days=self.days_ahead)
+
+        dates: list[str] = []
+        current = today
+        while current <= last:
+            dates.append(current.isoformat())
+            current += timedelta(days=1)
+        return dates
 
 
 def _load_yaml(path: Path) -> Any:
@@ -51,6 +61,12 @@ def _load_yaml(path: Path) -> Any:
         return None
     with path.open(encoding="utf-8") as handle:
         return yaml.safe_load(handle)
+
+
+def _parse_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    return date.fromisoformat(str(value))
 
 
 def load_config(config_path: Path | None = None) -> Config:
@@ -93,6 +109,7 @@ def load_config(config_path: Path | None = None) -> Config:
         movie_title_match=[s.lower() for s in movie.get("title_match", ["odyssey"])],
         format_match=[s.lower() for s in movie.get("format_match", ["imax 70mm"])],
         days_ahead=int(monitor.get("days_ahead", 21)),
+        end_date=_parse_date(monitor.get("end_date")),
         poll_interval_seconds=int(monitor.get("poll_interval_seconds", 180)),
         poll_interval_fast_seconds=int(
             monitor.get("poll_interval_fast_seconds", 30)

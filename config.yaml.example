@@ -13,8 +13,10 @@ movie:
     - 15/70
 
 monitor:
-  # How many days ahead to scan (starting today).
+  # How many days ahead to scan when end_date is not set.
   days_ahead: 21
+  # Scan through this date inclusive (overrides days_ahead when set).
+  end_date: "2026-09-30"
   # Seconds between full scans across all theaters.
   poll_interval_seconds: 180
   # Faster polling when a scan finds availability (seconds).

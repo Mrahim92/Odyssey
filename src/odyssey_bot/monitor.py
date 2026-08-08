@@ -23,9 +23,15 @@ def run_monitor(config_path: Path | None = None, once: bool = False) -> None:
         auto_open=config.auto_open,
     )
 
+    dates = config.scan_dates
+    if dates:
+        range_label = f"{dates[0]} through {dates[-1]} ({len(dates)} days)"
+    else:
+        range_label = "no dates (past end_date)"
+
     notifier.status(
         f"Odyssey 70mm monitor started — {len(config.theaters)} theaters, "
-        f"{len(config.scan_dates)} days, every {config.poll_interval_seconds}s"
+        f"{range_label}, every {config.poll_interval_seconds}s"
     )
 
     while True:
