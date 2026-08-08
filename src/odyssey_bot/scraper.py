@@ -14,7 +14,7 @@ TIME_RE = re.compile(
     r"\b(\d{1,2}:\d{2}\s*(?:AM|PM|am|pm))\b",
     re.IGNORECASE,
 )
-TIME_RE = re.compile(
+SEAT_AVAILABLE_SELECTORS = [
     "[data-seat-status='available']",
     "[data-status='available']",
     ".seat.available",

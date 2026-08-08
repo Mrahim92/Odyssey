@@ -12,7 +12,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Check Discord webhook secret
         run: |
@@ -21,7 +21,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -32,7 +32,7 @@ jobs:
           python -m playwright install chromium --with-deps
 
       - name: Restore alert state
-        uses: actions/cache/restore@v4
+        uses: actions/cache@v4
         with:
           path: state.json
           key: odyssey-state-v1
@@ -76,10 +76,3 @@ jobs:
       - name: Save alert state
         if: always()
         run: test -f state.json || echo '{"seen":{}}' > state.json
-
-      - name: Cache alert state
-        uses: actions/cache/save@v4
-        if: always()
-        with:
-          path: state.json
-          key: odyssey-state-v1
