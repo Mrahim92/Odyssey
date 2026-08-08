@@ -1,0 +1,179 @@
+# All 25 US theaters equipped for The Odyssey in native IMAX 70mm (15/70).
+# Source: imax.com/movie/the-odyssey + press lists (July 2026).
+# Set `enabled: false` on theaters you don't care about, or override in config.yaml.
+
+theaters:
+  - id: amc-lincoln-square
+    name: AMC Lincoln Square 13 & IMAX
+    city: New York
+    state: NY
+    chain: amc
+    url: https://www.amctheatres.com/movie-theatres/new-york-city/amc-lincoln-square-13/showtimes
+
+  - id: amc-metreon
+    name: AMC Metreon 16 & IMAX
+    city: San Francisco
+    state: CA
+    chain: amc
+    url: https://www.amctheatres.com/movie-theatres/san-francisco/amc-metreon-16/showtimes
+
+  - id: amc-citywalk
+    name: Universal Cinema AMC at CityWalk Hollywood & IMAX
+    city: Universal City
+    state: CA
+    chain: amc
+    url: https://www.amctheatres.com/movie-theatres/los-angeles/universal-cinema-amc-at-citywalk-hollywood/showtimes
+
+  - id: amc-rivercenter
+    name: AMC Rivercenter 11 & IMAX
+    city: San Antonio
+    state: TX
+    chain: amc
+    url: https://www.amctheatres.com/movie-theatres/san-antonio/amc-rivercenter-11/showtimes
+
+  - id: harkins-arizona-mills
+    name: Harkins Arizona Mills 25 & IMAX
+    city: Tempe
+    state: AZ
+    chain: harkins
+    url: https://www.harkins.com/theatres/arizona-mills-25-and-imax
+
+  - id: tcl-chinese
+    name: TCL Chinese Theatre IMAX
+    city: Hollywood
+    state: CA
+    chain: tcl
+    url: https://www.tclchinesetheatres.com/showtimes
+
+  - id: esquire-imax
+    name: Esquire IMAX
+    city: Sacramento
+    state: CA
+    chain: esquire
+    url: https://www.esquireimax.com/
+
+  - id: regal-ontario
+    name: Regal Edwards Ontario Palace & IMAX
+    city: Ontario
+    state: CA
+    chain: regal
+    url: https://www.regmovies.com/theatres/regal-edwards-ontario-palace-0380
+
+  - id: regal-irvine
+    name: Regal Irvine Spectrum 21 & IMAX
+    city: Irvine
+    state: CA
+    chain: regal
+    url: https://www.regmovies.com/theatres/regal-irvine-spectrum-21-0645
+
+  - id: regal-hacienda
+    name: Regal Hacienda Crossings & IMAX
+    city: Dublin
+    state: CA
+    chain: regal
+    url: https://www.regmovies.com/theatres/regal-hacienda-crossings-1610
+
+  - id: regal-la-live
+    name: Regal LA Live & IMAX
+    city: Los Angeles
+    state: CA
+    chain: regal
+    url: https://www.regmovies.com/theatres/regal-la-live-0673
+
+  - id: regal-denver
+    name: Regal Colorado Center & IMAX
+    city: Denver
+    state: CO
+    chain: regal
+    url: https://www.regmovies.com/theatres/regal-colorado-center-1614
+
+  - id: regal-mall-of-georgia
+    name: Regal Mall of Georgia & IMAX
+    city: Buford
+    state: GA
+    chain: regal
+    url: https://www.regmovies.com/theatres/regal-mall-of-georgia-1615
+
+  - id: regal-king-of-prussia
+    name: Regal UA King of Prussia & IMAX
+    city: King of Prussia
+    state: PA
+    chain: regal
+    url: https://www.regmovies.com/theatres/regal-ua-king-of-prussia-0674
+
+  - id: regal-opry-mills
+    name: Regal Opry Mills & IMAX
+    city: Nashville
+    state: TN
+    chain: regal
+    url: https://www.regmovies.com/theatres/regal-opry-mills-1616
+
+  - id: cinemark-carefree
+    name: Cinemark Carefree Circle & IMAX
+    city: Colorado Springs
+    state: CO
+    chain: cinemark
+    url: https://www.cinemark.com/theatres/co-colorado-springs/cinemark-carefree-circle-and-imax
+
+  - id: cinemark-seven-bridges
+    name: Cinemark Seven Bridges & IMAX
+    city: Woodridge
+    state: IL
+    chain: cinemark
+    url: https://www.cinemark.com/theatres/il-woodridge/cinemark-seven-bridges-and-imax
+
+  - id: cinemark-rochester
+    name: Cinemark Tinseltown Rochester & IMAX
+    city: Rochester
+    state: NY
+    chain: cinemark
+    url: https://www.cinemark.com/theatres/ny-rochester/cinemark-tinseltown-and-imax
+
+  - id: cinemark-dallas
+    name: Cinemark 17 & IMAX
+    city: Dallas
+    state: TX
+    chain: cinemark
+    url: https://www.cinemark.com/theatres/tx-dallas/cinemark-17-and-imax
+
+  - id: autonation-imax
+    name: AutoNation IMAX at Museum of Discovery & Science
+    city: Fort Lauderdale
+    state: FL
+    chain: museum
+    url: https://www.mods.org/imax/
+
+  - id: indiana-state-museum
+    name: IMAX Theatre at Indiana State Museum
+    city: Indianapolis
+    state: IN
+    chain: museum
+    url: https://www.indianamuseum.org/imax/
+
+  - id: chrysler-imax
+    name: Chrysler IMAX Dome Theatre
+    city: Detroit
+    state: MI
+    chain: museum
+    url: https://mi-sci.org/imax/
+
+  - id: celebration-grand-rapids
+    name: Celebration! Cinema Grand Rapids North & IMAX
+    city: Grand Rapids
+    state: MI
+    chain: celebration
+    url: https://celebrationcinema.com/cinemas/celebration-cinema-grand-rapids-north-and-imax
+
+  - id: brenden-palms
+    name: Brenden Palms 14 & IMAX
+    city: Las Vegas
+    state: NV
+    chain: brenden
+    url: https://www.brendentheatres.com/theater/brenden-palms-14-and-imax
+
+  - id: providence-place
+    name: Providence Place Cinemas 16 & IMAX
+    city: Providence
+    state: RI
+    chain: providence
+    url: https://www.providenceplacecinema.com/

@@ -1,0 +1,85 @@
+name: Scan Lincoln Square
+
+on:
+  schedule:
+    # Every 5 minutes (GitHub's practical minimum for scheduled workflows)
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Discord webhook secret
+        run: |
+          if [ -z "${{ secrets.DISCORD_WEBHOOK }}" ]; then
+            echo "::error::Add DISCORD_WEBHOOK in repo Settings → Secrets → Actions"
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install chromium --with-deps
+
+      - name: Restore alert state
+        uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: odyssey-state-v1
+          restore-keys: |
+            odyssey-state-v1
+
+      - name: Write cloud config
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          cat > config.yaml <<EOF
+          movie:
+            title_match: [odyssey]
+            format_match: [imax 70mm, imax 70 mm, 70mm imax, 15/70]
+          monitor:
+            days_ahead: 14
+            poll_interval_seconds: 120
+            poll_interval_fast_seconds: 20
+            concurrency: 1
+            headless: true
+            page_timeout_seconds: 45
+          booking:
+            min_seats: 4
+            theater_ids: [amc-lincoln-square]
+            auto_open: false
+            auto_book: false
+          notifications:
+            console: true
+            desktop: false
+            sound: false
+            discord_webhook: "${DISCORD_WEBHOOK}"
+          browser:
+            state_dir: browser_state
+          EOF
+
+      - name: Run scan
+        env:
+          PYTHONPATH: src
+        run: python -m odyssey_bot once
+
+      - name: Save alert state
+        if: always()
+        run: test -f state.json || echo '{"seen":{}}' > state.json
+
+      - name: Cache alert state
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: state.json
+          key: odyssey-state-v1

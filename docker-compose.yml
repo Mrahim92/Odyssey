@@ -1,0 +1,9 @@
+services:
+  odyssey-bot:
+    build: .
+    restart: unless-stopped
+    volumes:
+      # Persist "already alerted" state across container restarts
+      - ./state.json:/app/state.json
+    environment:
+      - TZ=America/New_York

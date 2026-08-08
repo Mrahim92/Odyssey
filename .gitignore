@@ -1,0 +1,10 @@
+config.yaml
+.env
+browser_state/
+state.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+playwright-report/
+test-results/
