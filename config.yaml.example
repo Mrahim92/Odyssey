@@ -16,6 +16,8 @@ monitor:
   days_ahead: 21
   # Scan through this date inclusive (overrides days_ahead when set).
   end_date: "2026-09-30"
+  # Skip dates before this (August IMAX sold out — focus on late Aug / September).
+  start_date: "2026-08-21"
   # Seconds between full scans across all theaters.
   poll_interval_seconds: 180
   # Faster polling when a scan finds availability (seconds).

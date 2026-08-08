@@ -11,7 +11,7 @@ A Python bot that continuously monitors **AMC Lincoln Square 13 & IMAX** (NYC) f
 | Item | Path |
 |------|------|
 | Repo | `C:\Users\mrahi\Odyssey` → https://github.com/Mrahim92/Odyssey |
-| Config | `config.yaml` (Lincoln Square only, `min_seats: 4`, `preferred_rows: [H,J,K,L,M]`, `end_date: 2026-09-30`) |
+| Config | `config.yaml` (Lincoln Square only, `min_seats: 4`, `preferred_rows: [H,J,K,L,M]`, `start_date: 2026-08-21`, `end_date: 2026-09-30`) |
 | Entry point | `python -m odyssey_bot run` (`PYTHONPATH=src`) |
 | AMC scraper | `src/odyssey_bot/amc_scraper.py` |
 | Seat counter | `src/odyssey_bot/amc_seats.py` |
