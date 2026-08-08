@@ -42,11 +42,14 @@ def run_monitor(config_path: Path | None = None, once: bool = False) -> None:
 
             if showtimes:
                 notifier.status(
-                    f"Scan complete: {len(showtimes)} matching showtime(s), "
-                    f"{len(fresh)} new"
+                    f"Scan complete: {len(showtimes)} bookable showtime(s) "
+                    f"with {config.min_seats}+ seats, {len(fresh)} new"
                 )
             else:
-                notifier.status("Scan complete: no IMAX 70mm Odyssey showtimes found")
+                notifier.status(
+                    "Scan complete: no bookable IMAX 70mm Odyssey showtimes "
+                    f"with {config.min_seats}+ seats (may be sold out)"
+                )
 
             if fresh:
                 notifier.alert(fresh)

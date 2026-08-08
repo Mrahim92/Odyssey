@@ -219,7 +219,7 @@ async def _enrich_with_seat_counts(
             )
             await page.wait_for_timeout(2500)
             seats = await _count_available_seats(page, config.min_seats)
-            if seats is None or seats >= config.min_seats:
+            if seats is not None and seats >= config.min_seats:
                 enriched.append(
                     Showtime(
                         theater=showtime.theater,
@@ -273,21 +273,29 @@ async def scan_theater_date(
 
 
 async def scan_all(config: Config) -> list[Showtime]:
+    from .amc_scraper import scan_amc_theater
+
     found: list[Showtime] = []
     semaphore = asyncio.Semaphore(config.concurrency)
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=config.headless)
 
-        async def run(theater: Theater, scan_date: str) -> list[Showtime]:
+        async def run(theater: Theater, scan_date: str | None = None) -> list[Showtime]:
             async with semaphore:
+                if theater.chain.lower() == "amc":
+                    return await scan_amc_theater(browser, theater, config)
+                assert scan_date is not None
                 return await scan_theater_date(browser, theater, scan_date, config)
 
-        tasks = [
-            run(theater, scan_date)
-            for theater in config.theaters
-            for scan_date in config.scan_dates
-        ]
+        tasks: list = []
+        for theater in config.theaters:
+            if theater.chain.lower() == "amc":
+                tasks.append(run(theater))
+            else:
+                for scan_date in config.scan_dates:
+                    tasks.append(run(theater, scan_date))
+
         batches = await asyncio.gather(*tasks, return_exceptions=True)
         await browser.close()
 
