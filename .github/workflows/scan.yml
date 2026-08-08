@@ -2,8 +2,8 @@ name: Scan Lincoln Square
 
 on:
   schedule:
-    # Every 5 minutes (GitHub's practical minimum for scheduled workflows)
-    - cron: "*/5 * * * *"
+    # Every 30 minutes
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 jobs:

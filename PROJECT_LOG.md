@@ -4,7 +4,7 @@
 
 ## What this project is
 
-A Python bot that continuously monitors **AMC Lincoln Square 13 & IMAX** (NYC) for *The Odyssey* in native **IMAX 70mm** and alerts when **4+ regular seats** in **rows H, J, K, L, M** become available. Runs locally or via GitHub Actions (every 5 min) for 24/7 coverage when the PC is off.
+A Python bot that continuously monitors **AMC Lincoln Square 13 & IMAX** (NYC) for *The Odyssey* in native **IMAX 70mm** and alerts when **4+ regular seats** in **rows H, J, K, L, M** become available. Runs locally or via GitHub Actions (every 30 min) for 24/7 coverage when the PC is off.
 
 ## Key locations
 
@@ -16,7 +16,7 @@ A Python bot that continuously monitors **AMC Lincoln Square 13 & IMAX** (NYC) f
 | AMC scraper | `src/odyssey_bot/amc_scraper.py` |
 | Seat counter | `src/odyssey_bot/amc_seats.py` |
 | Seat capture tool | `scripts/capture_seat_map.py` → saves to `scripts/captures/` |
-| GitHub Actions | `.github/workflows/scan.yml` (cron every 5 min, 30 min timeout) |
+| GitHub Actions | `.github/workflows/scan.yml` (cron every 30 min, 30 min timeout) |
 | Setup docs | `GITHUB_ACTIONS.md`, `DEPLOY.md` |
 
 ## Architecture

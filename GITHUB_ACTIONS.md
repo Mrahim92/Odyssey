@@ -1,6 +1,6 @@
 # GitHub Actions setup
 
-Runs a Lincoln Square IMAX 70mm scan **every 5 minutes** for free. Alerts via Discord when **4+ seats** appear.
+Runs a Lincoln Square IMAX 70mm scan **every 30 minutes** for free. Alerts via Discord when **4+ seats** appear in rows H–M.
 
 ## Step 1: Create a Discord webhook
 
@@ -78,7 +78,7 @@ The bot remembers showtimes it already alerted on (via Actions cache) so you won
 
 File: `.github/workflows/scan.yml`
 
-- Every 5 minutes + manual trigger
+- Every 30 minutes + manual trigger
 - Scans AMC Lincoln Square for The Odyssey **IMAX 70mm** only
 - Requires **4+ seats** before alerting
 - Pings Discord; no desktop notifications (cloud has no GUI)
