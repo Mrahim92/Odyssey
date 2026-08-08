@@ -7,6 +7,7 @@ from urllib.parse import urljoin
 from playwright.async_api import Browser, Page, async_playwright
 
 from .config import Config
+from .format_match import is_imax_70mm
 from .models import Showtime, Theater
 
 # Patterns for matching showtime blocks in page text / links.
@@ -143,7 +144,7 @@ async def _extract_showtimes_from_page(
         except Exception:  # noqa: BLE001
             pass
 
-        if not _contains_any(block, config.format_match):
+        if not is_imax_70mm(block):
             continue
 
         time_match = TIME_RE.search(block)
@@ -158,10 +159,7 @@ async def _extract_showtimes_from_page(
             continue
         seen_urls.add(purchase_url)
 
-        format_label = next(
-            (frag for frag in config.format_match if frag in block.lower()),
-            "IMAX 70mm",
-        )
+        format_label = "IMAX 70MM"
 
         results.append(
             Showtime(
@@ -182,7 +180,7 @@ async def _extract_showtimes_from_page(
 
         if not _contains_any(body, config.movie_title_match):
             return results
-        if not _contains_any(body, config.format_match):
+        if not is_imax_70mm(body):
             return results
 
         for time_match in TIME_RE.finditer(body):

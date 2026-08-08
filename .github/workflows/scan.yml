@@ -46,7 +46,7 @@ jobs:
           cat > config.yaml <<EOF
           movie:
             title_match: [odyssey]
-            format_match: [imax 70mm, imax 70 mm, 70mm imax, 15/70]
+            format_match: [imax 70mm, imax 70 mm, 70mm imax]
           monitor:
             end_date: "2026-09-30"
             poll_interval_seconds: 120

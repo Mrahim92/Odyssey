@@ -8,6 +8,7 @@ from urllib.parse import urljoin
 from playwright.async_api import Browser, Page
 
 from .config import Config
+from .format_match import is_imax_70mm
 from .models import Showtime, Theater
 from .scraper import TIME_RE, _enrich_with_seat_counts
 
@@ -34,23 +35,26 @@ def _parse_amc_date_label(label: str, today: date) -> date | None:
         return None
 
 
-async def _apply_amc_filters(page: Page) -> None:
+async def _apply_amc_filters(page: Page) -> bool:
     selects = page.locator("select")
     if await selects.count() < 4:
-        return
+        return False
 
     movie_select = selects.nth(2)
     format_select = selects.nth(3)
 
     movie_options = await movie_select.locator("option").all_inner_texts()
-    if any(opt.strip() == AMC_MOVIE_OPTION for opt in movie_options):
-        await movie_select.select_option(label=AMC_MOVIE_OPTION)
+    if not any(opt.strip() == AMC_MOVIE_OPTION for opt in movie_options):
+        return False
+    await movie_select.select_option(label=AMC_MOVIE_OPTION)
 
     format_options = await format_select.locator("option").all_inner_texts()
-    if any(opt.strip() == AMC_FORMAT_OPTION for opt in format_options):
-        await format_select.select_option(label=AMC_FORMAT_OPTION)
+    if not any(opt.strip() == AMC_FORMAT_OPTION for opt in format_options):
+        return False
+    await format_select.select_option(label=AMC_FORMAT_OPTION)
 
     await page.wait_for_timeout(2000)
+    return True
 
 
 async def _extract_amc_showtimes_for_date(
@@ -59,10 +63,15 @@ async def _extract_amc_showtimes_for_date(
     scan_date: str,
     config: Config,
 ) -> list[Showtime]:
-    await _apply_amc_filters(page)
+    if not await _apply_amc_filters(page):
+        return []
 
     section = page.locator('section[aria-label*="Showtimes for The Odyssey" i]')
     if await section.count() == 0:
+        return []
+
+    section_text = await section.first.inner_text()
+    if not is_imax_70mm(section_text):
         return []
 
     container = section.first
@@ -181,7 +190,7 @@ async def count_amc_odyssey_70mm_slots(
             await page.wait_for_timeout(1500)
             await _apply_amc_filters(page)
             body = (await page.locator("body").inner_text()).lower()
-            if "odyssey" in body and "imax 70mm" in body:
+            if is_imax_70mm(body):
                 slots_seen += len(TIME_RE.findall(await page.locator("body").inner_text()))
     finally:
         await context.close()

@@ -49,7 +49,7 @@ A Python bot that continuously monitors **AMC Lincoln Square 13 & IMAX** (NYC) f
 
 ## Gotchas
 
-- Lincoln Square has **IMAX 70mm** (480 seats) and **Dolby Cinema** — bot filters on "IMAX 70mm" text only.
+- Lincoln Square has **IMAX 70mm** (480 seats) and **Dolby Cinema** — bot requires **IMAX 70mm** together (plain "70mm" alone is rejected).
 - AMC `/showtimes/YYYY-MM-DD` URLs hang on "Loading"; use base `/showtimes` + date dropdown.
 - Cloudflare Error 1015 if too many seat page loads in quick succession.
 - AMC dropdown may not list dates past ~Sep 25 yet even though config scans through Sep 30.

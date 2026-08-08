@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from playwright.async_api import Page
 
+from .format_match import is_imax_70mm
+
 # Each seat is a <label> with a checkbox input. Row+seat encoded in input name
 # (e.g. H42 = row H, seat 42). Available = enabled, not Occupied, not wheelchair.
 _COUNT_AVAILABLE_SEATS_JS = """
@@ -128,7 +130,7 @@ async def count_amc_available_seats(
     if "sold out" in body or "no seats available" in body:
         return 0
 
-    if "imax 70mm" not in body and "70mm" not in body:
+    if not is_imax_70mm(body):
         return 0
 
     rows = [r.upper() for r in (preferred_rows or []) if r]

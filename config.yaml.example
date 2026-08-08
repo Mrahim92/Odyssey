@@ -10,7 +10,6 @@ movie:
     - imax 70mm
     - imax 70 mm
     - 70mm imax
-    - 15/70
 
 monitor:
   # How many days ahead to scan when end_date is not set.
