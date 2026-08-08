@@ -4,14 +4,14 @@
 
 ## What this project is
 
-A Python bot that continuously monitors **AMC Lincoln Square 13 & IMAX** (NYC) for *The Odyssey* in native **IMAX 70mm** and alerts when **4+ regular seats** become available. Runs locally or via GitHub Actions (every 5 min) for 24/7 coverage when the PC is off.
+A Python bot that continuously monitors **AMC Lincoln Square 13 & IMAX** (NYC) for *The Odyssey* in native **IMAX 70mm** and alerts when **4+ regular seats** in **rows H, J, K, L, M** become available. Runs locally or via GitHub Actions (every 5 min) for 24/7 coverage when the PC is off.
 
 ## Key locations
 
 | Item | Path |
 |------|------|
 | Repo | `C:\Users\mrahi\Odyssey` → https://github.com/Mrahim92/Odyssey |
-| Config | `config.yaml` (Lincoln Square only, `min_seats: 4`, `end_date: 2026-09-30`) |
+| Config | `config.yaml` (Lincoln Square only, `min_seats: 4`, `preferred_rows: [H,J,K,L,M]`, `end_date: 2026-09-30`) |
 | Entry point | `python -m odyssey_bot run` (`PYTHONPATH=src`) |
 | AMC scraper | `src/odyssey_bot/amc_scraper.py` |
 | Seat counter | `src/odyssey_bot/amc_seats.py` |
@@ -24,21 +24,21 @@ A Python bot that continuously monitors **AMC Lincoln Square 13 & IMAX** (NYC) f
 1. Playwright loads AMC Lincoln Square showtimes (base URL, not date-in-path).
 2. Date dropdown + filter for **The Odyssey** + **IMAX 70MM** section.
 3. Extract showtime links from `section[aria-label*="Showtimes for The Odyssey"]`; skip buttons containing "Sold Out".
-4. Open each candidate URL; count **gold SVG seat tiles** via `amc_seats.py` (excludes wheelchair/companion).
-5. Alert via Discord webhook when `seats >= min_seats`; dedupe via `state.json`.
+4. Open each candidate URL; count **available checkbox seats** via `amc_seats.py` (excludes wheelchair/companion; optional row filter).
+5. Alert via Discord webhook when `seats >= min_seats` in `preferred_rows`; dedupe via `state.json`.
 6. 1.5s delay between seat page loads to reduce Cloudflare rate limits.
 
 ## Decisions made
 
 - **Lincoln Square only** — user only wants NYC AMC Lincoln Square.
-- **Minimum 4 regular seats** — alert only when seat map confirms 4+ non-wheelchair available seats.
-- **Gold SVG tile = available** — each seat is a stacked SVG; available tiles have `#dfc66b` background path, occupied use `#4d4337`. Wheelchair/companion tiles have extra white path overlays (accessibility icon) and are excluded.
+- **Minimum 4 regular seats in back rows** — `preferred_rows: [H, J, K, L, M]` (last 5 rows; no row I in this auditorium). Empty list = any row.
+- **Checkbox seat map** — each seat has `input name="H42"` and aria-label; available = enabled, not Occupied, not wheelchair. Row parsed from name prefix.
 - **GitHub Actions for 24/7** — user added `DISCORD_WEBHOOK` secret; no Docker required for basic monitoring.
 
 ## Current state
 
-- Seat counter **validated** on live IMAX 70mm showtime `145674731` (Aug 23 2026 6pm): **2 regular available**, 3 wheelchair/companion excluded, 475 occupied.
-- With `min_seats: 4`, that showtime correctly does **not** alert.
+- Seat counter uses checkbox `name`/`aria-label` per seat; row filter **H, J, K, L, M** configured in `config.yaml`.
+- Validated on showtime `145674731`: 2 available in row A (front), **0 in back rows** — no alert (correct).
 - Showtime scraping verified locally (Odyssey section, sold-out skip, date dropdown).
 
 ## Roadmap
@@ -53,13 +53,13 @@ A Python bot that continuously monitors **AMC Lincoln Square 13 & IMAX** (NYC) f
 - AMC `/showtimes/YYYY-MM-DD` URLs hang on "Loading"; use base `/showtimes` + date dropdown.
 - Cloudflare Error 1015 if too many seat page loads in quick succession.
 - AMC dropdown may not list dates past ~Sep 25 yet even though config scans through Sep 30.
-- Screen arc at top of map is gold SVG but has no chair gradient — counter excludes it (height < 1000px, no gradient).
-- Wheelchair/companion seats show white icon paths inside the seat SVG — counter excludes any available tile with white fills or wheelchair aria-labels.
+- Wheelchair/companion excluded via aria-label patterns (`Wheelchair Space`, `Wheelchair Companion`, etc.).
+- Row letters parsed from seat name (e.g. `H42` = row H). This auditorium skips row I.
 
 ## Session notes (2026-08-08, seat calibration)
 
-**What we did:** User provided live calibration URL (`/showtimes/145674731/seats`). Rewrote `amc_seats.py` to count AMC's per-seat SVG tiles by fill color instead of pointer-cursor UI elements. Excluded wheelchair/companion seats (white path overlays + aria-label patterns). Validated against saved capture: 2 regular / 3 WC / 475 occupied.
+**What we did:** Calibrated seat counter on live URL; user confirmed 2 gold seats. Added `preferred_rows: [H,J,K,L,M]` — bot only counts available seats in back 5 rows.
 
-**How:** Each seat = large stacked `<svg>`. Available regular = `#dfc66b` background without `#4d4337` and without white overlay paths. Screen arc excluded when gold-only and height < 1000px.
+**How:** Switched primary counting to checkbox inputs (`input name="H42"`). Row filter applied before counting; wheelchair/companion still excluded.
 
-**Calibration URL:** https://www.amctheatres.com/showtimes/145674731/seats — The Odyssey IMAX 70MM, Aug 23 2026 6pm.
+**Calibration URL:** https://www.amctheatres.com/showtimes/145674731/seats — 2 seats in row A, 0 in H–M.

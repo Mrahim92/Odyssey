@@ -25,6 +25,7 @@ class Config:
     headless: bool
     page_timeout_seconds: int
     min_seats: int
+    preferred_rows: list[str]
     theater_ids: list[str]
     earliest_time: str
     latest_time: str
@@ -118,6 +119,7 @@ def load_config(config_path: Path | None = None) -> Config:
         headless=bool(monitor.get("headless", True)),
         page_timeout_seconds=int(monitor.get("page_timeout_seconds", 45)),
         min_seats=int(booking.get("min_seats", 2)),
+        preferred_rows=[str(r).upper() for r in booking.get("preferred_rows", [])],
         theater_ids=list(theater_filter),
         earliest_time=str(booking.get("earliest_time", "")),
         latest_time=str(booking.get("latest_time", "")),

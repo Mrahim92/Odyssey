@@ -1,15 +1,39 @@
-"""AMC seat map counting — gold SVG tiles are available seats."""
+"""AMC seat map counting — available checkbox seats, optional row filter."""
 from __future__ import annotations
 
 from playwright.async_api import Page
 
-# Each AMC seat is a large stacked SVG tile. Available tiles have a #dfc66b
-# (gold) background path; occupied tiles use #4d4337. Wheelchair/companion
-# seats add white path overlays for the accessibility icon — exclude those.
+# Each seat is a <label> with a checkbox input. Row+seat encoded in input name
+# (e.g. H42 = row H, seat 42). Available = enabled, not Occupied, not wheelchair.
 _COUNT_AVAILABLE_SEATS_JS = """
-() => {
+(targetRows) => {
   const bodyText = document.body?.innerText || "";
   if (/sold out|no seats available/i.test(bodyText)) return 0;
+
+  const allowedRows = targetRows && targetRows.length
+    ? new Set(targetRows.map((r) => String(r).toUpperCase()))
+    : null;
+
+  const inputs = [...document.querySelectorAll('label input[type="checkbox"]')];
+  if (inputs.length) {
+    let count = 0;
+    for (const input of inputs) {
+      const aria = (input.getAttribute("aria-label") || "").trim();
+      const name = (input.getAttribute("name") || "").trim();
+      const match = name.match(/^([A-Z]+)(\\d+)$/);
+      if (!match) continue;
+
+      const row = match[1];
+      if (allowedRows && !allowedRows.has(row)) continue;
+      if (input.disabled || /occupied/i.test(aria)) continue;
+      if (/wheelchair|companion|accessible|ada/i.test(aria)) continue;
+      count += 1;
+    }
+    return count;
+  }
+
+  // Fallback when checkbox map is missing (no row filter — cannot honor rows).
+  if (allowedRows) return 0;
 
   const pathFill = (el) => (el.getAttribute("fill") || "").trim().toLowerCase();
 
@@ -40,7 +64,6 @@ _COUNT_AVAILABLE_SEATS_JS = """
     const hasOccupied = fills.includes("#4d4337");
     const hasGradient = fills.some((f) => f.startsWith("url("));
 
-    // Top-of-map screen arc: gold only, short, no chair gradient.
     if (hasGold && !hasOccupied && !hasGradient && rect.height < 1000) {
       return false;
     }
@@ -80,7 +103,11 @@ async def _dismiss_cookie_banner(page: Page) -> None:
         pass
 
 
-async def count_amc_available_seats(page: Page, min_seats: int) -> int | None:
+async def count_amc_available_seats(
+    page: Page,
+    min_seats: int,
+    preferred_rows: list[str] | None = None,
+) -> int | None:
     """Return available regular seat count, 0 if sold out, None if map did not load."""
     try:
         await page.get_by_text("Seat Map", exact=False).first.wait_for(
@@ -104,8 +131,10 @@ async def count_amc_available_seats(page: Page, min_seats: int) -> int | None:
     if "imax 70mm" not in body and "70mm" not in body:
         return 0
 
+    rows = [r.upper() for r in (preferred_rows or []) if r]
+
     try:
-        count = await page.evaluate(_COUNT_AVAILABLE_SEATS_JS)
+        count = await page.evaluate(_COUNT_AVAILABLE_SEATS_JS, rows)
     except Exception:
         return None
 

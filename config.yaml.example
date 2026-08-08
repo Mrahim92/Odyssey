@@ -31,6 +31,13 @@ monitor:
 booking:
   # Minimum contiguous seats required to trigger an alert.
   min_seats: 4
+  # Only count available seats in these rows (empty list = any row).
+  preferred_rows:
+    - H
+    - J
+    - K
+    - L
+    - M
   # AMC Lincoln Square 13 & IMAX — NYC only.
   theater_ids:
     - amc-lincoln-square

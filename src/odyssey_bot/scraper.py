@@ -76,11 +76,16 @@ def _theater_url_for_date(theater: Theater, scan_date: str) -> str:
     return base
 
 
-async def _count_available_seats(page: Page, min_seats: int, purchase_url: str = "") -> int | None:
+async def _count_available_seats(
+    page: Page,
+    min_seats: int,
+    purchase_url: str = "",
+    preferred_rows: list[str] | None = None,
+) -> int | None:
     if "amctheatres.com" in purchase_url:
         from .amc_seats import count_amc_available_seats
 
-        return await count_amc_available_seats(page, min_seats)
+        return await count_amc_available_seats(page, min_seats, preferred_rows)
 
     for selector in SEAT_AVAILABLE_SELECTORS:
         try:
@@ -226,7 +231,10 @@ async def _enrich_with_seat_counts(
                     timeout=config.page_timeout_seconds * 1000,
                 )
                 seats = await _count_available_seats(
-                    page, config.min_seats, showtime.purchase_url
+                    page,
+                    config.min_seats,
+                    showtime.purchase_url,
+                    config.preferred_rows or None,
                 )
                 if seats is not None and seats >= config.min_seats:
                     enriched.append(
