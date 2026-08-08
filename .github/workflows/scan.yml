@@ -1,9 +1,8 @@
 name: Scan Lincoln Square
 
 on:
-  schedule:
-    # Every 10 minutes (scans finish in ~2 min with seat cache)
-    - cron: "*/10 * * * *"
+  # Triggered by cron-job.org every 10 min (see GITHUB_ACTIONS.md).
+  # GitHub's built-in schedule cron is unreliable — do not re-add it.
   workflow_dispatch:
 
 # Don't start a new scan while one is still running.
