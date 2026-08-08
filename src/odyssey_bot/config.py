@@ -24,6 +24,7 @@ class Config:
     concurrency: int
     headless: bool
     page_timeout_seconds: int
+    seat_check_delay_seconds: float
     min_seats: int
     preferred_rows: list[str]
     theater_ids: list[str]
@@ -118,6 +119,7 @@ def load_config(config_path: Path | None = None) -> Config:
         concurrency=max(1, int(monitor.get("concurrency", 3))),
         headless=bool(monitor.get("headless", True)),
         page_timeout_seconds=int(monitor.get("page_timeout_seconds", 45)),
+        seat_check_delay_seconds=float(monitor.get("seat_check_delay_seconds", 1.5)),
         min_seats=int(booking.get("min_seats", 2)),
         preferred_rows=[str(r).upper() for r in booking.get("preferred_rows", [])],
         theater_ids=list(theater_filter),

@@ -61,11 +61,7 @@ async def _extract_amc_showtimes_for_date(
     page: Page,
     theater: Theater,
     scan_date: str,
-    config: Config,
 ) -> list[Showtime]:
-    if not await _apply_amc_filters(page):
-        return []
-
     section = page.locator('section[aria-label*="Showtimes for The Odyssey" i]')
     if await section.count() == 0:
         return []
@@ -131,13 +127,18 @@ async def scan_amc_theater(
             wait_until="domcontentloaded",
             timeout=config.page_timeout_seconds * 1000,
         )
-        await page.wait_for_timeout(8000)
+        await page.wait_for_timeout(5000)
 
         date_select = page.locator("select").nth(1)
         if await date_select.count() == 0:
             return []
 
+        if not await _apply_amc_filters(page):
+            print("[amc] IMAX 70MM filter unavailable — skipping scan")
+            return []
+
         option_labels = await date_select.locator("option").all_inner_texts()
+        dates_checked = 0
         for label in option_labels:
             parsed = _parse_amc_date_label(label, today)
             if parsed is None:
@@ -146,13 +147,29 @@ async def scan_amc_theater(
             if iso not in allowed_dates:
                 continue
 
+            dates_checked += 1
             await date_select.select_option(label=label)
-            await page.wait_for_timeout(2000)
+            await page.wait_for_timeout(1500)
             found.extend(
-                await _extract_amc_showtimes_for_date(page, theater, iso, config)
+                await _extract_amc_showtimes_for_date(page, theater, iso)
             )
     finally:
         await context.close()
+
+    if not found:
+        print(f"[amc] Scanned {dates_checked} dates — no non-sold-out showtimes")
+        return []
+
+    unique: dict[str, Showtime] = {}
+    for showtime in found:
+        if showtime.purchase_url not in unique:
+            unique[showtime.purchase_url] = showtime
+    found = list(unique.values())
+
+    print(
+        f"[amc] Scanned {dates_checked} dates — "
+        f"{len(found)} unique showtime(s) to seat-check"
+    )
 
     if not found:
         return []

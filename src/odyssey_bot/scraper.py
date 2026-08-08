@@ -208,6 +208,7 @@ async def _enrich_with_seat_counts(
     import asyncio
 
     enriched: list[Showtime] = []
+    seen_urls: set[str] = set()
     context = await browser.new_context(
         user_agent=(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -221,6 +222,9 @@ async def _enrich_with_seat_counts(
         for showtime in showtimes:
             if not showtime.purchase_url or showtime.purchase_url == showtime.theater.url:
                 continue
+            if showtime.purchase_url in seen_urls:
+                continue
+            seen_urls.add(showtime.purchase_url)
 
             try:
                 await page.goto(
@@ -249,10 +253,11 @@ async def _enrich_with_seat_counts(
                 continue
             finally:
                 # Pace requests — AMC/Cloudflare rate-limits aggressive scraping.
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(config.seat_check_delay_seconds)
     finally:
         await context.close()
 
+    print(f"[seats] Checked {len(seen_urls)} showtime(s), {len(enriched)} with {config.min_seats}+ seats")
     return enriched
 
 
