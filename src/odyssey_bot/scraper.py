@@ -76,7 +76,12 @@ def _theater_url_for_date(theater: Theater, scan_date: str) -> str:
     return base
 
 
-async def _count_available_seats(page: Page, min_seats: int) -> int | None:
+async def _count_available_seats(page: Page, min_seats: int, purchase_url: str = "") -> int | None:
+    if "amctheatres.com" in purchase_url:
+        from .amc_seats import count_amc_available_seats
+
+        return await count_amc_available_seats(page, min_seats)
+
     for selector in SEAT_AVAILABLE_SELECTORS:
         try:
             seats = page.locator(selector)
@@ -197,43 +202,51 @@ async def _enrich_with_seat_counts(
     showtimes: list[Showtime],
     config: Config,
 ) -> list[Showtime]:
-    enriched: list[Showtime] = []
-    for showtime in showtimes:
-        if not showtime.purchase_url or showtime.purchase_url == showtime.theater.url:
-            enriched.append(showtime)
-            continue
+    import asyncio
 
-        context = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36"
-            )
+    enriched: list[Showtime] = []
+    context = await browser.new_context(
+        user_agent=(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
         )
-        page = await context.new_page()
-        try:
-            await page.goto(
-                showtime.purchase_url,
-                wait_until="domcontentloaded",
-                timeout=config.page_timeout_seconds * 1000,
-            )
-            await page.wait_for_timeout(2500)
-            seats = await _count_available_seats(page, config.min_seats)
-            if seats is not None and seats >= config.min_seats:
-                enriched.append(
-                    Showtime(
-                        theater=showtime.theater,
-                        date=showtime.date,
-                        time=showtime.time,
-                        format_label=showtime.format_label,
-                        purchase_url=showtime.purchase_url,
-                        available_seats=seats,
-                    )
+    )
+    page = await context.new_page()
+
+    try:
+        for showtime in showtimes:
+            if not showtime.purchase_url or showtime.purchase_url == showtime.theater.url:
+                continue
+
+            try:
+                await page.goto(
+                    showtime.purchase_url,
+                    wait_until="domcontentloaded",
+                    timeout=config.page_timeout_seconds * 1000,
                 )
-        except Exception:  # noqa: BLE001 - keep showtime if seat check fails
-            enriched.append(showtime)
-        finally:
-            await context.close()
+                seats = await _count_available_seats(
+                    page, config.min_seats, showtime.purchase_url
+                )
+                if seats is not None and seats >= config.min_seats:
+                    enriched.append(
+                        Showtime(
+                            theater=showtime.theater,
+                            date=showtime.date,
+                            time=showtime.time,
+                            format_label=showtime.format_label,
+                            purchase_url=showtime.purchase_url,
+                            available_seats=seats,
+                        )
+                    )
+            except Exception:  # noqa: BLE001
+                continue
+            finally:
+                # Pace requests — AMC/Cloudflare rate-limits aggressive scraping.
+                await asyncio.sleep(1.5)
+    finally:
+        await context.close()
+
     return enriched
 
 

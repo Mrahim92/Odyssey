@@ -6,5 +6,5 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-playwright-report/
+scripts/captures/
 test-results/
