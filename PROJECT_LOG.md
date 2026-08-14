@@ -1,6 +1,6 @@
 # Project Log
 
-**Last updated:** 2026-08-08
+**Last updated:** 2026-08-14
 
 ## What this project is
 
@@ -15,7 +15,6 @@ A Python bot that continuously monitors **AMC Lincoln Square 13 & IMAX** (NYC) f
 | Entry point | `python -m odyssey_bot run` (`PYTHONPATH=src`) |
 | AMC scraper | `src/odyssey_bot/amc_scraper.py` |
 | Seat counter | `src/odyssey_bot/amc_seats.py` |
-| Seat capture tool | `scripts/capture_seat_map.py` → saves to `scripts/captures/` |
 | GitHub Actions | `.github/workflows/scan.yml` (triggered by cron-job.org every 10 min) |
 | Setup docs | `GITHUB_ACTIONS.md`, `DEPLOY.md` |
 
@@ -23,44 +22,24 @@ A Python bot that continuously monitors **AMC Lincoln Square 13 & IMAX** (NYC) f
 
 1. Playwright loads AMC Lincoln Square showtimes (base URL, not date-in-path).
 2. Date dropdown + filter for **The Odyssey** + **IMAX 70MM** section.
-3. Extract showtime links from `section[aria-label*="Showtimes for The Odyssey"]`; skip buttons containing "Sold Out".
-4. Open each candidate URL; count **available checkbox seats** via `amc_seats.py` (excludes wheelchair/companion; optional row filter).
-5. Alert via Discord webhook when `seats >= min_seats` in `preferred_rows`; dedupe via `state.json`.
-6. 1.5s delay between seat page loads to reduce Cloudflare rate limits.
-
-## Decisions made
-
-- **Lincoln Square only** — user only wants NYC AMC Lincoln Square.
-- **Minimum 4 regular seats in back rows** — `preferred_rows: [H, J, K, L, M]` (last 5 rows; no row I in this auditorium). Empty list = any row.
-- **Checkbox seat map** — each seat has `input name="H42"` and aria-label; available = enabled, not Occupied, not wheelchair. Row parsed from name prefix.
-- **GitHub Actions for 24/7** — user added `DISCORD_WEBHOOK` secret; no Docker required for basic monitoring.
+3. Extract showtime links; skip "Sold Out" buttons.
+4. Count available checkbox seats in rows H–M via `amc_seats.py`.
+5. Discord alert when `seats >= 4`; dedupe via `state.json`.
+6. AMC page load retries 3× with 4s backoff; failures log **Scan incomplete** (not sold out).
 
 ## Current state
 
-- Seat counter uses checkbox `name`/`aria-label` per seat; row filter **H, J, K, L, M** configured in `config.yaml`.
-- Validated on showtime `145674731`: 2 available in row A (front), **0 in back rows** — no alert (correct).
-- Showtime scraping verified locally (Odyssey section, sold-out skip, date dropdown).
-
-## Roadmap
-
-1. Confirm GitHub Actions run succeeds with calibrated seat counter.
-2. Optional: `alert_mode: notify` fallback — ping on any non-sold-out link without waiting for seat count.
-3. Optimize scan scope if rate limits persist (only seat-check dates with non-sold-out links).
+- cron-job.org + GitHub Actions every 10 min (working).
+- AMC scrape failures now retried and logged explicitly (fix pushed 2026-08-14).
 
 ## Gotchas
 
-- Lincoln Square has **IMAX 70mm** (480 seats) and **Dolby Cinema** — bot requires **IMAX 70mm** together (plain "70mm" alone is rejected).
-- AMC `/showtimes/YYYY-MM-DD` URLs hang on "Loading"; use base `/showtimes` + date dropdown.
-- Cloudflare Error 1015 if too many seat page loads in quick succession — cloud uses 1.0s delay between seat checks.
-- **GitHub schedule cron is unreliable** — use cron-job.org to POST `workflow_dispatch` every 10 min (see `GITHUB_ACTIONS.md`).
-- AMC dropdown may not list dates past ~Sep 25 yet even though config scans through Sep 30.
-- Wheelchair/companion excluded via aria-label patterns (`Wheelchair Space`, `Wheelchair Companion`, etc.).
-- Row letters parsed from seat name (e.g. `H42` = row H). This auditorium skips row I.
+- Cloudflare / GitHub IP blocks cause AMC page load failures — now retried and surfaced as warnings in Actions.
+- **GitHub schedule cron unreliable** — use cron-job.org (`GITHUB_ACTIONS.md`).
+- IMAX 70mm filter strict; wheelchair/companion seats excluded; auditorium skips row I.
 
-## Session notes (2026-08-08, seat calibration)
+## Session notes (2026-08-14)
 
-**What we did:** Calibrated seat counter on live URL; user confirmed 2 gold seats. Added `preferred_rows: [H,J,K,L,M]` — bot only counts available seats in back 5 rows.
-
-**How:** Switched primary counting to checkbox inputs (`input name="H42"`). Row filter applied before counting; wheelchair/companion still excluded.
-
-**Calibration URL:** https://www.amctheatres.com/showtimes/145674731/seats — 2 seats in row A, 0 in H–M.
+**What:** Fixed silent AMC failures on GitHub Actions (~16s runs with no seat check).
+**How:** `_load_amc_page()` retry loop in `amc_scraper.py`; `ScanResult.errors` in `scraper.py`; monitor prints `Scan incomplete` + `::warning::` in Actions.
+**Learned:** "Scan complete: may be sold out" was misleading when AMC never loaded.
