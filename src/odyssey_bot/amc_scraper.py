@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import date, datetime
 
@@ -22,6 +23,17 @@ USER_AGENT = (
 
 AMC_MOVIE_OPTION = "The Odyssey"
 AMC_FORMAT_OPTION = "IMAX 70MM"
+PAGE_LOAD_ATTEMPTS = 3
+PAGE_RETRY_DELAY_SECONDS = 4
+
+_BLOCK_MARKERS = (
+    "error 1015",
+    "access denied",
+    "just a moment",
+    "cf-browser-verification",
+    "enable javascript and cookies",
+    "sorry, you have been blocked",
+)
 
 
 def _parse_amc_date_label(label: str, today: date) -> date | None:
@@ -37,9 +49,77 @@ def _parse_amc_date_label(label: str, today: date) -> date | None:
         return None
 
 
+async def _page_blocked(page: Page) -> bool:
+    try:
+        body = (await page.locator("body").inner_text(timeout=5000)).lower()
+    except Exception:  # noqa: BLE001
+        return True
+    return any(marker in body for marker in _BLOCK_MARKERS)
+
+
+async def _load_amc_page(page: Page, theater: Theater, config: Config) -> str | None:
+    """Load AMC showtimes page and wait for the date dropdown. Returns error text or None."""
+    last_error = "unknown error"
+
+    for attempt in range(1, PAGE_LOAD_ATTEMPTS + 1):
+        try:
+            await page.goto(
+                theater.url,
+                wait_until="domcontentloaded",
+                timeout=config.page_timeout_seconds * 1000,
+            )
+        except Exception as exc:  # noqa: BLE001
+            last_error = f"navigation failed: {exc}"
+            print(
+                f"[amc] Page load failed (attempt {attempt}/{PAGE_LOAD_ATTEMPTS}): "
+                f"{last_error}"
+            )
+            if attempt < PAGE_LOAD_ATTEMPTS:
+                await asyncio.sleep(PAGE_RETRY_DELAY_SECONDS)
+            continue
+
+        if await _page_blocked(page):
+            last_error = "Cloudflare or bot block detected"
+            print(
+                f"[amc] Page blocked (attempt {attempt}/{PAGE_LOAD_ATTEMPTS}) — "
+                "retrying..."
+            )
+            if attempt < PAGE_LOAD_ATTEMPTS:
+                await asyncio.sleep(PAGE_RETRY_DELAY_SECONDS)
+            continue
+
+        date_select = page.locator("select").nth(1)
+        try:
+            await date_select.wait_for(timeout=15000)
+        except Exception as exc:  # noqa: BLE001
+            select_count = await page.locator("select").count()
+            last_error = (
+                f"date dropdown missing ({select_count} select element(s) on page)"
+            )
+            print(
+                f"[amc] Page not ready (attempt {attempt}/{PAGE_LOAD_ATTEMPTS}): "
+                f"{last_error}"
+            )
+            if attempt < PAGE_LOAD_ATTEMPTS:
+                await asyncio.sleep(PAGE_RETRY_DELAY_SECONDS)
+            continue
+
+        return None
+
+    return (
+        f"AMC showtimes page did not load after {PAGE_LOAD_ATTEMPTS} attempts "
+        f"({last_error})"
+    )
+
+
 async def _apply_amc_filters(page: Page) -> bool:
     selects = page.locator("select")
-    if await selects.count() < 4:
+    select_count = await selects.count()
+    if select_count < 4:
+        print(
+            f"[amc] Page not ready — found {select_count} select element(s), "
+            "expected at least 4 for movie/format filters"
+        )
         return False
 
     movie_select = selects.nth(2)
@@ -120,31 +200,32 @@ async def scan_amc_theater(
     theater: Theater,
     config: Config,
     state: StateStore | None = None,
-) -> list[Showtime]:
+) -> tuple[list[Showtime], list[str]]:
     """Scan an AMC theatre using its showtimes page filters and date dropdown."""
     allowed_dates = set(config.scan_dates)
     today = date.today()
     found: list[Showtime] = []
+    dates_checked = 0
+    errors: list[str] = []
 
     context = await browser.new_context(user_agent=USER_AGENT)
     page = await context.new_page()
     await block_heavy_assets(page)
 
     try:
-        await page.goto(
-            theater.url,
-            wait_until="domcontentloaded",
-            timeout=config.page_timeout_seconds * 1000,
-        )
+        load_error = await _load_amc_page(page, theater, config)
+        if load_error:
+            print(f"[amc] ERROR: {load_error}")
+            errors.append(load_error)
+            return [], errors
+
         date_select = page.locator("select").nth(1)
-        try:
-            await date_select.wait_for(timeout=15000)
-        except Exception:
-            return []
 
         if not await _apply_amc_filters(page):
-            print("[amc] IMAX 70MM filter unavailable — skipping scan")
-            return []
+            message = "IMAX 70MM filter unavailable on AMC page"
+            print(f"[amc] ERROR: {message}")
+            errors.append(message)
+            return [], errors
 
         option_labels = await date_select.locator("option").all_inner_texts()
         dates_to_scan: list[tuple[str, str]] = []
@@ -159,7 +240,6 @@ async def scan_amc_theater(
         # September first — most likely drops, and partial runs prefer later dates.
         dates_to_scan.sort(key=lambda item: item[0], reverse=True)
 
-        dates_checked = 0
         for iso, label in dates_to_scan:
             dates_checked += 1
             await date_select.select_option(label=label)
@@ -172,12 +252,17 @@ async def scan_amc_theater(
             found.extend(
                 await _extract_amc_showtimes_for_date(page, theater, iso)
             )
+    except Exception as exc:  # noqa: BLE001
+        message = f"AMC scan failed: {exc}"
+        print(f"[amc] ERROR: {message}")
+        errors.append(message)
+        return [], errors
     finally:
         await context.close()
 
     if not found:
         print(f"[amc] Scanned {dates_checked} dates — no non-sold-out showtimes")
-        return []
+        return [], errors
 
     unique: dict[str, Showtime] = {}
     for showtime in found:
@@ -191,9 +276,9 @@ async def scan_amc_theater(
     )
 
     if not found:
-        return []
+        return [], errors
 
-    return await _enrich_with_seat_counts(browser, found, config, state)
+    return await _enrich_with_seat_counts(browser, found, config, state), errors
 
 
 async def count_amc_odyssey_70mm_slots(

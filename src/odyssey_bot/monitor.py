@@ -37,10 +37,18 @@ def run_monitor(config_path: Path | None = None, once: bool = False) -> None:
     while True:
         started = time.monotonic()
         try:
-            showtimes = scan_all_sync(config, state)
+            result = scan_all_sync(config, state)
+            showtimes = result.showtimes
             fresh = [st for st in showtimes if state.is_new(st.key)]
 
-            if showtimes:
+            if result.errors:
+                for error in result.errors:
+                    print(f"::warning::{error}", flush=True)
+                notifier.status(
+                    "Scan incomplete — AMC page may be blocked: "
+                    + "; ".join(result.errors)
+                )
+            elif showtimes:
                 notifier.status(
                     f"Scan complete: {len(showtimes)} bookable showtime(s) "
                     f"with {config.min_seats}+ seats, {len(fresh)} new"

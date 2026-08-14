@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from dataclasses import dataclass, field
 from urllib.parse import urljoin
 
 from playwright.async_api import Browser, Page, async_playwright
@@ -11,6 +12,16 @@ from .config import Config
 from .format_match import is_imax_70mm
 from .models import Showtime, Theater
 from .state import StateStore
+
+
+@dataclass
+class ScanResult:
+    showtimes: list[Showtime]
+    errors: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.errors
 
 # Patterns for matching showtime blocks in page text / links.
 TIME_RE = re.compile(
@@ -299,7 +310,7 @@ async def scan_theater_date(
     scan_date: str,
     config: Config,
     state: StateStore | None = None,
-) -> list[Showtime]:
+) -> tuple[list[Showtime], list[str]]:
     url = _theater_url_for_date(theater, scan_date)
     context = await browser.new_context(
         user_agent=(
@@ -310,6 +321,7 @@ async def scan_theater_date(
     )
     page = await context.new_page()
     showtimes: list[Showtime] = []
+    errors: list[str] = []
     try:
         await page.goto(
             url,
@@ -318,27 +330,31 @@ async def scan_theater_date(
         )
         await page.wait_for_timeout(3000)
         showtimes = await _extract_showtimes_from_page(page, theater, scan_date, config)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        message = f"{theater.name} {scan_date}: page load failed ({exc})"
+        print(f"[scan] ERROR: {message}")
+        errors.append(message)
         showtimes = []
     finally:
         await context.close()
 
     if not showtimes:
-        return []
+        return [], errors
 
-    return await _enrich_with_seat_counts(browser, showtimes, config, state)
+    return await _enrich_with_seat_counts(browser, showtimes, config, state), errors
 
 
-async def scan_all(config: Config, state: StateStore | None = None) -> list[Showtime]:
+async def scan_all(config: Config, state: StateStore | None = None) -> ScanResult:
     from .amc_scraper import scan_amc_theater
 
     found: list[Showtime] = []
+    errors: list[str] = []
     semaphore = asyncio.Semaphore(config.concurrency)
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=config.headless)
 
-        async def run(theater: Theater, scan_date: str | None = None) -> list[Showtime]:
+        async def run(theater: Theater, scan_date: str | None = None) -> tuple[list[Showtime], list[str]]:
             async with semaphore:
                 if theater.chain.lower() == "amc":
                     return await scan_amc_theater(browser, theater, config, state)
@@ -358,8 +374,13 @@ async def scan_all(config: Config, state: StateStore | None = None) -> list[Show
 
     for batch in batches:
         if isinstance(batch, Exception):
+            message = f"theater scan failed: {batch}"
+            print(f"[scan] ERROR: {message}")
+            errors.append(message)
             continue
-        found.extend(batch)
+        showtimes, batch_errors = batch
+        found.extend(showtimes)
+        errors.extend(batch_errors)
 
     # Deduplicate by key, prefer entries with seat counts.
     deduped: dict[str, Showtime] = {}
@@ -373,11 +394,14 @@ async def scan_all(config: Config, state: StateStore | None = None) -> list[Show
         ):
             deduped[showtime.key] = showtime
 
-    return sorted(
-        deduped.values(),
-        key=lambda s: (s.date, s.time, s.theater.name),
+    return ScanResult(
+        showtimes=sorted(
+            deduped.values(),
+            key=lambda s: (s.date, s.time, s.theater.name),
+        ),
+        errors=errors,
     )
 
 
-def scan_all_sync(config: Config, state: StateStore | None = None) -> list[Showtime]:
+def scan_all_sync(config: Config, state: StateStore | None = None) -> ScanResult:
     return asyncio.run(scan_all(config, state))
