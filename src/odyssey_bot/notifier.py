@@ -68,7 +68,7 @@ class Notifier:
         if not showtimes:
             return
 
-        header = f"Found {len(showtimes)} IMAX 70mm Odyssey showtime(s)!"
+        header = f"Found {len(showtimes)} {showtimes[0].format_label} {showtimes[0].theater.name} showtime(s)!"
         body = "\n\n".join(st.summary() for st in showtimes)
 
         if self.console:
@@ -77,7 +77,7 @@ class Notifier:
 
         if self.desktop:
             short = showtimes[0].summary().replace("\n", " | ")
-            _desktop("Odyssey 70mm tickets!", short[:240])
+            _desktop(f"{showtimes[0].format_label} tickets!", short[:240])
 
         if self.discord_webhook:
             lines = [f"**{header}**"]

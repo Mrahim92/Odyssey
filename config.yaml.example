@@ -4,6 +4,10 @@ movie:
   # Title fragments used to match showtimes (case-insensitive).
   title_match:
     - odyssey
+  # Exact AMC dropdown labels (required for AMC scraper).
+  amc_movie_name: "The Odyssey"
+  amc_format_name: "IMAX 70MM"
+  alert_label: "Odyssey IMAX 70mm"
   # Format strings that must appear near the showtime (case-insensitive).
   # Rejects plain IMAX Laser / digital IMAX without 70mm film.
   format_match:

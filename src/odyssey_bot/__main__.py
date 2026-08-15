@@ -11,7 +11,13 @@ from .config import ROOT
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Monitor and book The Odyssey in IMAX 70mm."
+        description="Monitor and book IMAX 70mm showtimes at AMC Lincoln Square."
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to config.yaml (default: ./config.yaml)",
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -36,12 +42,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if command == "once":
         try:
-            run_monitor(once=True)
+            run_monitor(config_path=args.config, once=True)
         except Exception:
             return 1
         return 0
 
-    run_monitor(once=False)
+    run_monitor(config_path=args.config, once=False)
     return 0
 
 

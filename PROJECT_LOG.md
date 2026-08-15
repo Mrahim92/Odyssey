@@ -38,8 +38,7 @@ A Python bot that continuously monitors **AMC Lincoln Square 13 & IMAX** (NYC) f
 - **GitHub schedule cron unreliable** — use cron-job.org (`GITHUB_ACTIONS.md`).
 - IMAX 70mm filter strict; wheelchair/companion seats excluded; auditorium skips row I.
 
-## Session notes (2026-08-14, alert link fix)
+## Session notes (2026-08-14, Dune on-sale prep)
 
-**What:** Discord alert linked to `/showtimes/145499914` which 404s; `/seats` URL works.
-**How:** `amc_urls.normalize_amc_purchase_url()` appends `/seats`; Discord alerts now use clickable URLs (not code blocks). Seat-page format check reads **Showtime Information** panel only (rejects plain `70mm`).
-**Learned:** Showtime 145499914 was plain 70mm @ 2:00 AM — false positive, not IMAX 70mm.
+**What:** Added multi-movie support (`amc_movie_name`, `onsale_at`, fast polling) + `config.dune.yaml.example` + `DUNE_ONSALE.md`.
+**Plan:** Run locally Aug 18 11:50 AM ET with `python -m odyssey_bot run --config config.dune.yaml`; polls every 20s after noon. GitHub cron too slow for drop.

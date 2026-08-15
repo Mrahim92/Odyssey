@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -16,12 +16,17 @@ ROOT = Path(__file__).resolve().parents[2]
 @dataclass
 class Config:
     movie_title_match: list[str]
+    amc_movie_name: str
+    amc_format_name: str
+    alert_label: str
     format_match: list[str]
     days_ahead: int
     start_date: date | None
     end_date: date | None
+    onsale_at: datetime | None
     poll_interval_seconds: int
     poll_interval_fast_seconds: int
+    onsale_poll_interval_seconds: int
     concurrency: int
     headless: bool
     page_timeout_seconds: int
@@ -76,6 +81,12 @@ def _parse_date(value: str | None) -> date | None:
     return date.fromisoformat(str(value))
 
 
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    return datetime.fromisoformat(str(value))
+
+
 def load_config(config_path: Path | None = None) -> Config:
     config_path = config_path or ROOT / "config.yaml"
     example_path = ROOT / "config.yaml.example"
@@ -106,6 +117,11 @@ def load_config(config_path: Path | None = None) -> Config:
     notifications = raw.get("notifications", {})
     browser = raw.get("browser", {})
     movie = raw.get("movie", {})
+    amc_movie_name = str(movie.get("amc_movie_name", "")).strip()
+    if not amc_movie_name:
+        amc_movie_name = "The Odyssey"
+    amc_format_name = str(movie.get("amc_format_name", "IMAX 70MM")).strip()
+    alert_label = str(movie.get("alert_label", "")).strip() or amc_movie_name
 
     theater_filter = booking.get("theater_ids") or []
     if theater_filter:
@@ -114,13 +130,20 @@ def load_config(config_path: Path | None = None) -> Config:
 
     return Config(
         movie_title_match=[s.lower() for s in movie.get("title_match", ["odyssey"])],
+        amc_movie_name=amc_movie_name,
+        amc_format_name=amc_format_name,
+        alert_label=alert_label,
         format_match=[s.lower() for s in movie.get("format_match", ["imax 70mm"])],
         days_ahead=int(monitor.get("days_ahead", 21)),
         start_date=_parse_date(monitor.get("start_date")),
         end_date=_parse_date(monitor.get("end_date")),
+        onsale_at=_parse_datetime(monitor.get("onsale_at")),
         poll_interval_seconds=int(monitor.get("poll_interval_seconds", 180)),
         poll_interval_fast_seconds=int(
             monitor.get("poll_interval_fast_seconds", 30)
+        ),
+        onsale_poll_interval_seconds=int(
+            monitor.get("onsale_poll_interval_seconds", 20)
         ),
         concurrency=max(1, int(monitor.get("concurrency", 3))),
         headless=bool(monitor.get("headless", True)),

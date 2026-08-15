@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import asyncio
 import time
 from pathlib import Path
@@ -10,6 +11,38 @@ from .config import Config, ROOT, load_config
 from .notifier import Notifier
 from .scraper import scan_all_sync
 from .state import StateStore
+
+
+def _onsale_reached(config: Config) -> bool:
+    if config.onsale_at is None:
+        return False
+    now = datetime.now().astimezone()
+    onsale = config.onsale_at
+    if onsale.tzinfo is None:
+        onsale = onsale.replace(tzinfo=now.tzinfo)
+    return now >= onsale
+
+
+def _wait_for_onsale(config: Config, notifier: Notifier) -> None:
+    if config.onsale_at is None:
+        return
+    now = datetime.now().astimezone()
+    onsale = config.onsale_at
+    if onsale.tzinfo is None:
+        onsale = onsale.replace(tzinfo=now.tzinfo)
+    seconds_until = (onsale - now).total_seconds()
+    if seconds_until <= 0:
+        return
+    if seconds_until > 120:
+        notifier.status(
+            f"On-sale at {onsale.strftime('%Y-%m-%d %I:%M %p %Z')} — "
+            f"{int(seconds_until // 60)} min remaining"
+        )
+        time.sleep(min(seconds_until - 30, 60))
+        return
+    if seconds_until > 1:
+        notifier.status(f"On-sale in {int(seconds_until)}s — standing by...")
+        time.sleep(seconds_until)
 
 
 def run_monitor(config_path: Path | None = None, once: bool = False) -> None:
@@ -30,12 +63,18 @@ def run_monitor(config_path: Path | None = None, once: bool = False) -> None:
         range_label = "no dates (past end_date)"
 
     notifier.status(
-        f"Odyssey 70mm monitor started — {len(config.theaters)} theaters, "
+        f"{config.alert_label} monitor started — {len(config.theaters)} theaters, "
         f"{range_label}, every {config.poll_interval_seconds}s"
     )
+    if config.onsale_at:
+        notifier.status(
+            f"On-sale target: {config.onsale_at.strftime('%Y-%m-%d %I:%M %p %Z')} "
+            f"(fast poll every {config.onsale_poll_interval_seconds}s after)"
+        )
 
     while True:
         started = time.monotonic()
+        _wait_for_onsale(config, notifier)
         try:
             result = scan_all_sync(config, state)
             showtimes = result.showtimes
@@ -55,7 +94,7 @@ def run_monitor(config_path: Path | None = None, once: bool = False) -> None:
                 )
             else:
                 notifier.status(
-                    "Scan complete: no bookable IMAX 70mm Odyssey showtimes "
+                    f"Scan complete: no bookable {config.alert_label} showtimes "
                     f"with {config.min_seats}+ seats (may be sold out)"
                 )
 
@@ -73,7 +112,9 @@ def run_monitor(config_path: Path | None = None, once: bool = False) -> None:
             state.save()
 
             interval = (
-                config.poll_interval_fast_seconds
+                config.onsale_poll_interval_seconds
+                if _onsale_reached(config)
+                else config.poll_interval_fast_seconds
                 if showtimes
                 else config.poll_interval_seconds
             )

@@ -22,8 +22,7 @@ USER_AGENT = (
     "Chrome/131.0.0.0 Safari/537.36"
 )
 
-AMC_MOVIE_OPTION = "The Odyssey"
-AMC_FORMAT_OPTION = "IMAX 70MM"
+AMC_FORMAT_DEFAULT = "IMAX 70MM"
 PAGE_LOAD_ATTEMPTS = 3
 PAGE_RETRY_DELAY_SECONDS = 4
 
@@ -113,7 +112,11 @@ async def _load_amc_page(page: Page, theater: Theater, config: Config) -> str | 
     )
 
 
-async def _apply_amc_filters(page: Page) -> bool:
+def _showtimes_section(page: Page, movie_name: str):
+    return page.locator(f'section[aria-label*="Showtimes for {movie_name}" i]')
+
+
+async def _apply_amc_filters(page: Page, config: Config) -> bool:
     selects = page.locator("select")
     select_count = await selects.count()
     if select_count < 4:
@@ -126,20 +129,23 @@ async def _apply_amc_filters(page: Page) -> bool:
     movie_select = selects.nth(2)
     format_select = selects.nth(3)
 
+    movie_name = config.amc_movie_name
+    format_name = config.amc_format_name or AMC_FORMAT_DEFAULT
+
     movie_options = await movie_select.locator("option").all_inner_texts()
-    if not any(opt.strip() == AMC_MOVIE_OPTION for opt in movie_options):
+    if not any(opt.strip() == movie_name for opt in movie_options):
+        print(f"[amc] Movie '{movie_name}' not in AMC dropdown yet")
         return False
-    await movie_select.select_option(label=AMC_MOVIE_OPTION)
+    await movie_select.select_option(label=movie_name)
 
     format_options = await format_select.locator("option").all_inner_texts()
-    if not any(opt.strip() == AMC_FORMAT_OPTION for opt in format_options):
+    if not any(opt.strip() == format_name for opt in format_options):
+        print(f"[amc] Format '{format_name}' not in AMC dropdown yet")
         return False
-    await format_select.select_option(label=AMC_FORMAT_OPTION)
+    await format_select.select_option(label=format_name)
 
     try:
-        await page.locator('section[aria-label*="Showtimes for The Odyssey" i]').first.wait_for(
-            timeout=5000
-        )
+        await _showtimes_section(page, movie_name).first.wait_for(timeout=5000)
     except Exception:
         pass
     return True
@@ -149,8 +155,9 @@ async def _extract_amc_showtimes_for_date(
     page: Page,
     theater: Theater,
     scan_date: str,
+    config: Config,
 ) -> list[Showtime]:
-    section = page.locator('section[aria-label*="Showtimes for The Odyssey" i]')
+    section = _showtimes_section(page, config.amc_movie_name)
     if await section.count() == 0:
         return []
 
@@ -190,7 +197,7 @@ async def _extract_amc_showtimes_for_date(
                 theater=theater,
                 date=scan_date,
                 time=show_time,
-                format_label=AMC_FORMAT_OPTION,
+                format_label=config.amc_format_name or AMC_FORMAT_DEFAULT,
                 purchase_url=purchase_url,
             )
         )
@@ -224,8 +231,8 @@ async def scan_amc_theater(
 
         date_select = page.locator("select").nth(1)
 
-        if not await _apply_amc_filters(page):
-            message = "IMAX 70MM filter unavailable on AMC page"
+        if not await _apply_amc_filters(page, config):
+            message = f"{config.amc_format_name} filter unavailable for {config.amc_movie_name}"
             print(f"[amc] ERROR: {message}")
             errors.append(message)
             return [], errors
@@ -247,13 +254,13 @@ async def scan_amc_theater(
             dates_checked += 1
             await date_select.select_option(label=label)
             try:
-                await page.locator(
-                    'section[aria-label*="Showtimes for The Odyssey" i]'
-                ).first.wait_for(timeout=3000)
+                await _showtimes_section(page, config.amc_movie_name).first.wait_for(
+                    timeout=3000
+                )
             except Exception:
                 continue
             found.extend(
-                await _extract_amc_showtimes_for_date(page, theater, iso)
+                await _extract_amc_showtimes_for_date(page, theater, iso, config)
             )
     except Exception as exc:  # noqa: BLE001
         message = f"AMC scan failed: {exc}"
@@ -312,7 +319,7 @@ async def count_amc_odyssey_70mm_slots(
             dates_scanned += 1
             await date_select.select_option(label=label)
             await page.wait_for_timeout(1500)
-            await _apply_amc_filters(page)
+            await _apply_amc_filters(page, config)
             body = (await page.locator("body").inner_text()).lower()
             if is_imax_70mm(body):
                 slots_seen += len(TIME_RE.findall(await page.locator("body").inner_text()))
