@@ -38,8 +38,8 @@ A Python bot that continuously monitors **AMC Lincoln Square 13 & IMAX** (NYC) f
 - **GitHub schedule cron unreliable** — use cron-job.org (`GITHUB_ACTIONS.md`).
 - IMAX 70mm filter strict; wheelchair/companion seats excluded; auditorium skips row I.
 
-## Session notes (2026-08-14)
+## Session notes (2026-08-14, alert link fix)
 
-**What:** Fixed silent AMC failures on GitHub Actions (~16s runs with no seat check).
-**How:** `_load_amc_page()` retry loop in `amc_scraper.py`; `ScanResult.errors` in `scraper.py`; monitor prints `Scan incomplete` + `::warning::` in Actions.
-**Learned:** "Scan complete: may be sold out" was misleading when AMC never loaded.
+**What:** Discord alert linked to `/showtimes/145499914` which 404s; `/seats` URL works.
+**How:** `amc_urls.normalize_amc_purchase_url()` appends `/seats`; Discord alerts now use clickable URLs (not code blocks). Seat-page format check reads **Showtime Information** panel only (rejects plain `70mm`).
+**Learned:** Showtime 145499914 was plain 70mm @ 2:00 AM — false positive, not IMAX 70mm.

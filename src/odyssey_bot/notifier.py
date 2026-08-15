@@ -80,7 +80,18 @@ class Notifier:
             _desktop("Odyssey 70mm tickets!", short[:240])
 
         if self.discord_webhook:
-            _discord(self.discord_webhook, f"**{header}**\n```\n{body}\n```")
+            lines = [f"**{header}**"]
+            for st in showtimes:
+                seats = (
+                    f"{st.available_seats} seats"
+                    if st.available_seats is not None
+                    else "seats unknown"
+                )
+                lines.append(
+                    f"**{st.date} {st.time}** — {st.format_label} — {seats}\n"
+                    f"{st.purchase_url}"
+                )
+            _discord(self.discord_webhook, "\n\n".join(lines))
 
         if self.sound:
             _sound()

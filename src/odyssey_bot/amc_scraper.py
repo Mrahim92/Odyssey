@@ -8,6 +8,7 @@ from urllib.parse import urljoin
 
 from playwright.async_api import Browser, Page
 
+from .amc_urls import normalize_amc_purchase_url
 from .browser_helpers import block_heavy_assets
 from .config import Config
 from .format_match import is_imax_70mm
@@ -181,7 +182,9 @@ async def _extract_amc_showtimes_for_date(
             continue
 
         show_time = time_match.group(1).upper()
-        purchase_url = urljoin("https://www.amctheatres.com", href)
+        purchase_url = normalize_amc_purchase_url(
+            urljoin("https://www.amctheatres.com", href)
+        )
         results.append(
             Showtime(
                 theater=theater,

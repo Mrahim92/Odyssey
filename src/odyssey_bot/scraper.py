@@ -7,6 +7,7 @@ from urllib.parse import urljoin
 
 from playwright.async_api import Browser, Page, async_playwright
 
+from .amc_urls import normalize_amc_purchase_url
 from .browser_helpers import block_heavy_assets
 from .config import Config
 from .format_match import is_imax_70mm
@@ -238,14 +239,19 @@ async def _enrich_with_seat_counts(
         for showtime in showtimes:
             if not showtime.purchase_url or showtime.purchase_url == showtime.theater.url:
                 continue
-            if showtime.purchase_url in seen_urls:
+            seat_url = (
+                normalize_amc_purchase_url(showtime.purchase_url)
+                if "amctheatres.com" in showtime.purchase_url
+                else showtime.purchase_url
+            )
+            if seat_url in seen_urls:
                 continue
-            seen_urls.add(showtime.purchase_url)
+            seen_urls.add(seat_url)
 
             seats: int | None = None
             if state is not None:
                 seats = state.get_cached_seats(
-                    showtime.purchase_url,
+                    seat_url,
                     config.min_seats,
                     config.seat_cache_ttl_minutes,
                 )
@@ -258,7 +264,7 @@ async def _enrich_with_seat_counts(
                                 date=showtime.date,
                                 time=showtime.time,
                                 format_label=showtime.format_label,
-                                purchase_url=showtime.purchase_url,
+                                purchase_url=seat_url,
                                 available_seats=seats,
                             )
                         )
@@ -266,18 +272,18 @@ async def _enrich_with_seat_counts(
 
             try:
                 await page.goto(
-                    showtime.purchase_url,
+                    seat_url,
                     wait_until="domcontentloaded",
                     timeout=config.page_timeout_seconds * 1000,
                 )
                 seats = await _count_available_seats(
                     page,
                     config.min_seats,
-                    showtime.purchase_url,
+                    seat_url,
                     config.preferred_rows or None,
                 )
                 if state is not None and seats is not None:
-                    state.cache_seats(showtime.purchase_url, seats)
+                    state.cache_seats(seat_url, seats)
                 if seats is not None and seats >= config.min_seats:
                     enriched.append(
                         Showtime(
@@ -285,7 +291,7 @@ async def _enrich_with_seat_counts(
                             date=showtime.date,
                             time=showtime.time,
                             format_label=showtime.format_label,
-                            purchase_url=showtime.purchase_url,
+                            purchase_url=seat_url,
                             available_seats=seats,
                         )
                     )

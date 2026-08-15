@@ -105,6 +105,17 @@ async def _dismiss_cookie_banner(page: Page) -> None:
         pass
 
 
+async def _showtime_info_text(page: Page) -> str:
+    """Read the Showtime Information panel — not the full page (footer mentions IMAX)."""
+    try:
+        heading = page.get_by_role("heading", name="Showtime Information")
+        await heading.wait_for(timeout=5000)
+        container = heading.locator("xpath=ancestor::*[self::section or self::div][1]")
+        return await container.inner_text(timeout=5000)
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 async def count_amc_available_seats(
     page: Page,
     min_seats: int,
@@ -134,7 +145,11 @@ async def count_amc_available_seats(
     if "sold out" in body or "no seats available" in body:
         return 0
 
-    if not is_imax_70mm(body):
+    showtime_info = await _showtime_info_text(page)
+    if not showtime_info or not is_imax_70mm(showtime_info):
+        if showtime_info:
+            format_hint = showtime_info.replace("\n", " ")[:120]
+            print(f"[seats] Skipping non-IMAX-70mm showtime: {format_hint}")
         return 0
 
     rows = [r.upper() for r in (preferred_rows or []) if r]
