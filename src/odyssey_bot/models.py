@@ -22,6 +22,8 @@ class Showtime:
     format_label: str
     purchase_url: str
     available_seats: int | None = None
+    booked: bool = False
+    book_message: str = ""
     discovered_at: datetime = field(default_factory=datetime.now)
 
     @property
@@ -34,8 +36,12 @@ class Showtime:
             if self.available_seats is not None
             else "seats unknown"
         )
-        return (
-            f"{self.theater.name} ({self.theater.city}, {self.theater.state})\n"
-            f"  {self.date} {self.time} — {self.format_label} — {seats}\n"
-            f"  {self.purchase_url}"
-        )
+        status = "BOOKED — pay in browser" if self.booked else seats
+        lines = [
+            f"{self.theater.name} ({self.theater.city}, {self.theater.state})",
+            f"  {self.date} {self.time} — {self.format_label} — {status}",
+            f"  {self.purchase_url}",
+        ]
+        if self.book_message:
+            lines.append(f"  {self.book_message}")
+        return "\n".join(lines)

@@ -28,6 +28,9 @@ def main(argv: list[str] | None = None) -> int:
     login_parser = sub.add_parser("login", help="Save a logged-in browser session")
     login_parser.add_argument("chain", choices=["amc", "regal", "cinemark"])
 
+    book_parser = sub.add_parser("book", help="Test auto-book on a seat URL")
+    book_parser.add_argument("url", help="AMC /showtimes/.../seats URL")
+
     args = parser.parse_args(argv)
     command = args.command or "run"
 
@@ -37,8 +40,28 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if command == "login":
-        login(args.chain)
+        login(args.chain, config_path=args.config)
         return 0
+
+    if command == "book":
+        from .amc_urls import normalize_amc_purchase_url
+        from .booker import attempt_booking
+        from .config import load_config
+        from .models import Showtime
+
+        config = load_config(args.config)
+        theater = config.theaters[0] if config.theaters else None
+        if theater is None:
+            print("No theater configured")
+            return 1
+        showtime = Showtime(
+            theater=theater,
+            date="test",
+            time="TEST",
+            format_label=config.amc_format_name,
+            purchase_url=normalize_amc_purchase_url(args.url),
+        )
+        return 0 if attempt_booking(showtime, config) else 1
 
     if command == "once":
         try:

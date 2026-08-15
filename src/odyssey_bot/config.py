@@ -40,6 +40,7 @@ class Config:
     auto_open: bool
     auto_book: bool
     stop_before_payment: bool
+    stop_after_book: bool
     notify_console: bool
     notify_desktop: bool
     discord_webhook: str
@@ -158,6 +159,7 @@ def load_config(config_path: Path | None = None) -> Config:
         auto_open=bool(booking.get("auto_open", True)),
         auto_book=bool(booking.get("auto_book", False)),
         stop_before_payment=bool(booking.get("stop_before_payment", True)),
+        stop_after_book=bool(booking.get("stop_after_book", True)),
         notify_console=bool(notifications.get("console", True)),
         notify_desktop=bool(notifications.get("desktop", True)),
         discord_webhook=str(notifications.get("discord_webhook", "")),

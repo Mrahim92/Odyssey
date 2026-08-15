@@ -225,13 +225,20 @@ async def _enrich_with_seat_counts(
     enriched: list[Showtime] = []
     seen_urls: set[str] = set()
     skipped_cache = 0
-    context = await browser.new_context(
-        user_agent=(
+
+    context_kwargs: dict = {
+        "user_agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/131.0.0.0 Safari/537.36"
         )
-    )
+    }
+    if config.auto_book:
+        login_file = config.browser_state_dir / "amc.json"
+        if login_file.exists():
+            context_kwargs["storage_state"] = str(login_file)
+
+    context = await browser.new_context(**context_kwargs)
     page = await context.new_page()
     await block_heavy_assets(page)
 
@@ -248,8 +255,10 @@ async def _enrich_with_seat_counts(
                 continue
             seen_urls.add(seat_url)
 
+            just_booked = False
             seats: int | None = None
-            if state is not None:
+            use_cache = state is not None and not config.auto_book
+            if use_cache:
                 seats = state.get_cached_seats(
                     seat_url,
                     config.min_seats,
@@ -282,9 +291,20 @@ async def _enrich_with_seat_counts(
                     seat_url,
                     config.preferred_rows or None,
                 )
-                if state is not None and seats is not None:
+                if state is not None and seats is not None and not config.auto_book:
                     state.cache_seats(seat_url, seats)
                 if seats is not None and seats >= config.min_seats:
+                    booked = False
+                    book_message = ""
+                    if config.auto_book and "amctheatres.com" in seat_url:
+                        from .amc_booker import try_auto_book_on_page
+
+                        booked, book_message = await try_auto_book_on_page(page, config)
+                        if booked:
+                            print(f"[book] SUCCESS: {book_message}")
+                        else:
+                            print(f"[book] FAILED: {book_message}")
+
                     enriched.append(
                         Showtime(
                             theater=showtime.theater,
@@ -293,15 +313,32 @@ async def _enrich_with_seat_counts(
                             format_label=showtime.format_label,
                             purchase_url=seat_url,
                             available_seats=seats,
+                            booked=booked,
+                            book_message=book_message,
                         )
                     )
-            except Exception:  # noqa: BLE001
+                    if config.auto_book and config.stop_after_book and booked:
+                        return enriched
+                    just_booked = booked
+                else:
+                    just_booked = False
+            except Exception as exc:  # noqa: BLE001
+                print(f"[seats] Error checking {seat_url}: {exc}")
+                just_booked = False
                 continue
             finally:
-                # Pace requests — AMC/Cloudflare rate-limits aggressive scraping.
-                await asyncio.sleep(config.seat_check_delay_seconds)
+                if not just_booked:
+                    await asyncio.sleep(config.seat_check_delay_seconds)
     finally:
-        await context.close()
+        keep_open = (
+            config.auto_book
+            and config.stop_before_payment
+            and any(st.booked for st in enriched)
+        )
+        if not keep_open:
+            await context.close()
+        else:
+            print("[book] Browser left open at checkout — complete payment manually.")
 
     print(
         f"[seats] Checked {len(seen_urls) - skipped_cache} showtime(s) "
@@ -358,7 +395,9 @@ async def scan_all(config: Config, state: StateStore | None = None) -> ScanResul
     semaphore = asyncio.Semaphore(config.concurrency)
 
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=config.headless)
+        browser = await playwright.chromium.launch(
+            headless=config.headless and not config.auto_book
+        )
 
         async def run(theater: Theater, scan_date: str | None = None) -> tuple[list[Showtime], list[str]]:
             async with semaphore:

@@ -95,6 +95,54 @@ _COUNT_AVAILABLE_SEATS_JS = """
 }
 """
 
+_FIND_SEATS_TO_SELECT_JS = """
+([targetRows, minSeats]) => {
+  const target = targetRows && targetRows.length
+    ? new Set(targetRows.map((r) => String(r).toUpperCase()))
+    : null;
+
+  const seats = [];
+  for (const input of document.querySelectorAll('label input[type="checkbox"]')) {
+    const name = (input.getAttribute("name") || "").trim();
+    const aria = (input.getAttribute("aria-label") || "").trim();
+    const match = name.match(/^([A-Z]+)(\\d+)$/);
+    if (!match) continue;
+    if (input.disabled || /occupied/i.test(aria)) continue;
+    if (/wheelchair|companion|accessible|ada/i.test(aria)) continue;
+    seats.push({ name, row: match[1], num: parseInt(match[2], 10) });
+  }
+
+  const byRow = {};
+  for (const seat of seats) {
+    if (target && !target.has(seat.row)) continue;
+    (byRow[seat.row] ||= []).push(seat);
+  }
+
+  let searchRows = Object.keys(byRow);
+  if (!searchRows.length) {
+    for (const seat of seats) {
+      (byRow[seat.row] ||= []).push(seat);
+    }
+    searchRows = Object.keys(byRow);
+  }
+
+  let best = null;
+  for (const row of searchRows) {
+    const arr = byRow[row].sort((a, b) => a.num - b.num);
+    if (arr.length < minSeats) continue;
+    for (let i = 0; i <= arr.length - minSeats; i++) {
+      const window = arr.slice(i, i + minSeats);
+      const spread = window[minSeats - 1].num - window[0].num;
+      if (!best || spread < best.spread) {
+        best = { spread, names: window.map((s) => s.name), row };
+      }
+    }
+  }
+
+  return best ? best.names : null;
+}
+"""
+
 
 async def _dismiss_cookie_banner(page: Page) -> None:
     try:
@@ -116,23 +164,15 @@ async def _showtime_info_text(page: Page) -> str:
         return ""
 
 
-async def count_amc_available_seats(
-    page: Page,
-    min_seats: int,
-    preferred_rows: list[str] | None = None,
-) -> int | None:
-    """Return available regular seat count, 0 if sold out, None if map did not load."""
+async def wait_for_amc_seat_map(page: Page) -> bool:
+    """Wait for AMC seat map to load. Returns False if sold out or blocked."""
     try:
-        await page.get_by_text("Seat Map", exact=False).first.wait_for(
-            timeout=25_000
-        )
+        await page.get_by_text("Seat Map", exact=False).first.wait_for(timeout=25_000)
     except Exception:
         body = (await page.locator("body").inner_text(timeout=5000)).lower()
         if "sold out" in body or "no seats available" in body:
-            return 0
-        if "rate limited" in body or "error 1015" in body:
-            return None
-        return None
+            return False
+        return False
 
     await _dismiss_cookie_banner(page)
 
@@ -140,6 +180,60 @@ async def count_amc_available_seats(
         await page.locator('label input[type="checkbox"]').first.wait_for(timeout=8000)
     except Exception:
         await page.wait_for_timeout(1000)
+    return True
+
+
+async def find_seats_to_select(
+    page: Page,
+    min_seats: int,
+    preferred_rows: list[str] | None = None,
+) -> list[str]:
+    rows = [r.upper() for r in (preferred_rows or []) if r]
+    try:
+        names = await page.evaluate(_FIND_SEATS_TO_SELECT_JS, [rows, min_seats])
+    except Exception:
+        return []
+    if not names or len(names) < min_seats:
+        return []
+    return list(names)
+
+
+async def select_amc_seats(
+    page: Page,
+    min_seats: int,
+    preferred_rows: list[str] | None = None,
+) -> list[str]:
+    """Click the best compact block of seats. Returns selected seat names."""
+    names = await find_seats_to_select(page, min_seats, preferred_rows)
+    selected: list[str] = []
+    for name in names:
+        checkbox = page.locator(f'label input[type="checkbox"][name="{name}"]')
+        try:
+            await checkbox.click(timeout=3000)
+            selected.append(name)
+        except Exception:
+            label = page.locator(f'label:has(input[name="{name}"])')
+            try:
+                await label.click(timeout=3000)
+                selected.append(name)
+            except Exception:
+                break
+    return selected
+
+
+async def count_amc_available_seats(
+    page: Page,
+    min_seats: int,
+    preferred_rows: list[str] | None = None,
+) -> int | None:
+    """Return available regular seat count, 0 if sold out, None if map did not load."""
+    if not await wait_for_amc_seat_map(page):
+        body = (await page.locator("body").inner_text(timeout=5000)).lower()
+        if "sold out" in body or "no seats available" in body:
+            return 0
+        if "rate limited" in body or "error 1015" in body:
+            return None
+        return None
 
     body = (await page.locator("body").inner_text(timeout=5000)).lower()
     if "sold out" in body or "no seats available" in body:

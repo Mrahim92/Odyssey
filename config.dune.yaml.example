@@ -3,34 +3,32 @@
 
 movie:
   title_match: [dune]
-  # Exact labels in AMC's movie/format dropdowns (verify on amctheatres.com before Aug 18).
   amc_movie_name: "Dune: Part Three"
   amc_format_name: "IMAX 70MM"
   alert_label: "Dune Part Three IMAX 70mm"
   format_match: [imax 70mm, imax 70 mm, 70mm imax]
 
 monitor:
-  # Opening weekend + first week of December release.
   start_date: "2026-12-18"
   end_date: "2026-12-28"
-  # Switch to fast polling at noon ET on Aug 18.
   onsale_at: "2026-08-18T12:00:00-04:00"
   poll_interval_seconds: 120
-  onsale_poll_interval_seconds: 20
-  poll_interval_fast_seconds: 15
+  onsale_poll_interval_seconds: 10
+  poll_interval_fast_seconds: 10
   concurrency: 1
-  headless: true
+  headless: false
   page_timeout_seconds: 45
-  seat_check_delay_seconds: 1.0
-  seat_cache_ttl_minutes: 5
+  seat_check_delay_seconds: 0.5
+  seat_cache_ttl_minutes: 0
 
 booking:
   min_seats: 4
   preferred_rows: [H, J, K, L, M]
   theater_ids: [amc-lincoln-square]
-  auto_open: true
-  auto_book: false
+  auto_open: false
+  auto_book: true
   stop_before_payment: true
+  stop_after_book: true
 
 notifications:
   console: true

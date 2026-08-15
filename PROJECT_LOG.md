@@ -38,7 +38,8 @@ A Python bot that continuously monitors **AMC Lincoln Square 13 & IMAX** (NYC) f
 - **GitHub schedule cron unreliable** — use cron-job.org (`GITHUB_ACTIONS.md`).
 - IMAX 70mm filter strict; wheelchair/companion seats excluded; auditorium skips row I.
 
-## Session notes (2026-08-14, Dune on-sale prep)
+## Session notes (2026-08-14, AMC auto-book)
 
-**What:** Added multi-movie support (`amc_movie_name`, `onsale_at`, fast polling) + `config.dune.yaml.example` + `DUNE_ONSALE.md`.
-**Plan:** Run locally Aug 18 11:50 AM ET with `python -m odyssey_bot run --config config.dune.yaml`; polls every 20s after noon. GitHub cron too slow for drop.
+**What:** Built real AMC auto-book — selects 4 contiguous-ish seats in rows H–M, clicks Continue through checkout, stops at payment with browser open.
+**How:** `amc_booker.py`, seat selection JS in `amc_seats.py`, inline book during scan in `scraper.py`. Dune config: `auto_book: true`, poll every 10s after noon.
+**User action:** Run `login amc` before Aug 18; start `run --config config.dune.yaml` at 11:50 AM on drop day.

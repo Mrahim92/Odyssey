@@ -47,13 +47,22 @@ def _wait_for_onsale(config: Config, notifier: Notifier) -> None:
 
 def run_monitor(config_path: Path | None = None, once: bool = False) -> None:
     config = load_config(config_path)
+    if config.auto_book:
+        login_file = config.browser_state_dir / "amc.json"
+        if not login_file.exists():
+            raise SystemExit(
+                "auto_book requires AMC login. Run:\n"
+                "  python -m odyssey_bot login amc"
+                + (f" --config {config_path}" if config_path else "")
+            )
+
     state = StateStore(ROOT / "state.json")
     notifier = Notifier(
         console=config.notify_console,
         desktop=config.notify_desktop,
         discord_webhook=config.discord_webhook,
         sound=config.notify_sound,
-        auto_open=config.auto_open,
+        auto_open=config.auto_open and not config.auto_book,
     )
 
     dates = config.scan_dates
@@ -70,6 +79,10 @@ def run_monitor(config_path: Path | None = None, once: bool = False) -> None:
         notifier.status(
             f"On-sale target: {config.onsale_at.strftime('%Y-%m-%d %I:%M %p %Z')} "
             f"(fast poll every {config.onsale_poll_interval_seconds}s after)"
+        )
+    if config.auto_book:
+        notifier.status(
+            "Auto-book ON — will select seats and advance to checkout when found"
         )
 
     while True:
@@ -98,16 +111,22 @@ def run_monitor(config_path: Path | None = None, once: bool = False) -> None:
                     f"with {config.min_seats}+ seats (may be sold out)"
                 )
 
-            if fresh:
+            booked = [st for st in showtimes if st.booked]
+
+            if booked:
+                notifier.alert(booked)
+                for st in booked:
+                    state.mark_seen(st.key)
+                state.save()
+                if config.stop_after_book:
+                    notifier.status(
+                        "Seats booked — complete payment in the open browser window."
+                    )
+                    return
+            elif fresh:
                 notifier.alert(fresh)
                 for st in fresh:
                     state.mark_seen(st.key)
-
-                if config.auto_book:
-                    from .booker import attempt_booking
-
-                    for st in fresh:
-                        attempt_booking(st, config)
 
             state.save()
 

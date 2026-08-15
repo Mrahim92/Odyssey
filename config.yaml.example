@@ -59,6 +59,8 @@ booking:
   auto_book: false
   # Stop before payment even when auto_book is true (recommended).
   stop_before_payment: true
+  # Stop monitoring after a successful auto-book.
+  stop_after_book: true
 
 notifications:
   console: true

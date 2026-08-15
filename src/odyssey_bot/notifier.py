@@ -68,7 +68,11 @@ class Notifier:
         if not showtimes:
             return
 
-        header = f"Found {len(showtimes)} {showtimes[0].format_label} {showtimes[0].theater.name} showtime(s)!"
+        header = (
+            f"BOOKED {len(showtimes)} showtime(s) — pay in browser NOW!"
+            if any(st.booked for st in showtimes)
+            else f"Found {len(showtimes)} {showtimes[0].format_label} showtime(s)!"
+        )
         body = "\n\n".join(st.summary() for st in showtimes)
 
         if self.console:
