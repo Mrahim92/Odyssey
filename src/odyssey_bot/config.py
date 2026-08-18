@@ -33,6 +33,7 @@ class Config:
     seat_check_delay_seconds: float
     seat_cache_ttl_minutes: int
     min_seats: int
+    seat_groups: list[int]
     preferred_rows: list[str]
     theater_ids: list[str]
     earliest_time: str
@@ -46,6 +47,8 @@ class Config:
     discord_webhook: str
     notify_sound: bool
     browser_state_dir: Path
+    browser_channel: str | None
+    extra_showtime_urls: list[str]
     theaters: list[Theater]
 
     @property
@@ -129,6 +132,17 @@ def load_config(config_path: Path | None = None) -> Config:
         allowed = set(theater_filter)
         theaters = [t for t in theaters if t.id in allowed]
 
+    min_seats = int(booking.get("min_seats", 2))
+    raw_groups = booking.get("seat_groups")
+    if raw_groups:
+        seat_groups = [int(g) for g in raw_groups if int(g) > 0]
+    else:
+        seat_groups = []
+    if seat_groups and sum(seat_groups) != min_seats:
+        raise ValueError(
+            f"seat_groups {seat_groups} must sum to min_seats ({min_seats})"
+        )
+
     return Config(
         movie_title_match=[s.lower() for s in movie.get("title_match", ["odyssey"])],
         amc_movie_name=amc_movie_name,
@@ -151,7 +165,8 @@ def load_config(config_path: Path | None = None) -> Config:
         page_timeout_seconds=int(monitor.get("page_timeout_seconds", 45)),
         seat_check_delay_seconds=float(monitor.get("seat_check_delay_seconds", 1.5)),
         seat_cache_ttl_minutes=int(monitor.get("seat_cache_ttl_minutes", 30)),
-        min_seats=int(booking.get("min_seats", 2)),
+        min_seats=min_seats,
+        seat_groups=seat_groups,
         preferred_rows=[str(r).upper() for r in booking.get("preferred_rows", [])],
         theater_ids=list(theater_filter),
         earliest_time=str(booking.get("earliest_time", "")),
@@ -165,5 +180,11 @@ def load_config(config_path: Path | None = None) -> Config:
         discord_webhook=str(notifications.get("discord_webhook", "")),
         notify_sound=bool(notifications.get("sound", True)),
         browser_state_dir=ROOT / browser.get("state_dir", "browser_state"),
+        browser_channel=str(browser.get("channel", "chrome")).strip() or None,
+        extra_showtime_urls=[
+            str(u).strip()
+            for u in monitor.get("extra_showtime_urls", [])
+            if str(u).strip()
+        ],
         theaters=theaters,
     )
