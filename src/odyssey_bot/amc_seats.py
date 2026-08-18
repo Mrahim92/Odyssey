@@ -96,7 +96,7 @@ _COUNT_AVAILABLE_SEATS_JS = """
 """
 
 _FIND_SEATS_TO_SELECT_JS = """
-([targetRows, minSeats]) => {
+([targetRows, groupSizes]) => {
   const target = targetRows && targetRows.length
     ? new Set(targetRows.map((r) => String(r).toUpperCase()))
     : null;
@@ -126,20 +126,45 @@ _FIND_SEATS_TO_SELECT_JS = """
     searchRows = Object.keys(byRow);
   }
 
-  let best = null;
-  for (const row of searchRows) {
-    const arr = byRow[row].sort((a, b) => a.num - b.num);
-    if (arr.length < minSeats) continue;
-    for (let i = 0; i <= arr.length - minSeats; i++) {
-      const window = arr.slice(i, i + minSeats);
-      const spread = window[minSeats - 1].num - window[0].num;
+  const bestBlockInRow = (arr, size) => {
+    if (arr.length < size) return null;
+    let best = null;
+    for (let i = 0; i <= arr.length - size; i++) {
+      const window = arr.slice(i, i + size);
+      const spread = window[size - 1].num - window[0].num;
       if (!best || spread < best.spread) {
-        best = { spread, names: window.map((s) => s.name), row };
+        best = { spread, names: window.map((s) => s.name) };
       }
     }
+    return best;
+  };
+
+  const findBestBlock = (size, exclude) => {
+    let best = null;
+    for (const row of searchRows) {
+      const arr = byRow[row]
+        .filter((s) => !exclude.has(s.name))
+        .sort((a, b) => a.num - b.num);
+      const block = bestBlockInRow(arr, size);
+      if (block && (!best || block.spread < best.spread)) {
+        best = block;
+      }
+    }
+    return best;
+  };
+
+  const sizes = [...groupSizes].sort((a, b) => b - a);
+  const selected = [];
+  const used = new Set();
+
+  for (const size of sizes) {
+    const block = findBestBlock(size, used);
+    if (!block) return null;
+    selected.push(...block.names);
+    for (const name of block.names) used.add(name);
   }
 
-  return best ? best.names : null;
+  return selected.length ? selected : null;
 }
 """
 
@@ -162,6 +187,24 @@ async def _showtime_info_text(page: Page) -> str:
         return await container.inner_text(timeout=5000)
     except Exception:  # noqa: BLE001
         return ""
+
+
+async def _showtime_format_is_imax_70mm(page: Page) -> bool:
+    """True when a Showtime Information list item is IMAX 70mm (not plain 70mm)."""
+    try:
+        heading = page.get_by_role("heading", name="Showtime Information")
+        container = heading.locator("xpath=ancestor::*[self::section or self::div][1]")
+        for text in await container.locator("li").all_inner_texts():
+            if is_imax_70mm(text.strip()):
+                return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
+def _showtime_matches_title(info: str, title_match: list[str]) -> bool:
+    lowered = info.lower()
+    return any(needle in lowered for needle in title_match)
 
 
 async def wait_for_amc_seat_map(page: Page) -> bool:
@@ -187,10 +230,12 @@ async def find_seats_to_select(
     page: Page,
     min_seats: int,
     preferred_rows: list[str] | None = None,
+    seat_groups: list[int] | None = None,
 ) -> list[str]:
     rows = [r.upper() for r in (preferred_rows or []) if r]
+    groups = seat_groups if seat_groups else [min_seats]
     try:
-        names = await page.evaluate(_FIND_SEATS_TO_SELECT_JS, [rows, min_seats])
+        names = await page.evaluate(_FIND_SEATS_TO_SELECT_JS, [rows, groups])
     except Exception:
         return []
     if not names or len(names) < min_seats:
@@ -202,9 +247,12 @@ async def select_amc_seats(
     page: Page,
     min_seats: int,
     preferred_rows: list[str] | None = None,
+    seat_groups: list[int] | None = None,
 ) -> list[str]:
-    """Click the best compact block of seats. Returns selected seat names."""
-    names = await find_seats_to_select(page, min_seats, preferred_rows)
+    """Click the best seat block(s). Returns selected seat names."""
+    names = await find_seats_to_select(
+        page, min_seats, preferred_rows, seat_groups=seat_groups
+    )
     selected: list[str] = []
     for name in names:
         checkbox = page.locator(f'label input[type="checkbox"][name="{name}"]')
@@ -225,8 +273,9 @@ async def count_amc_available_seats(
     page: Page,
     min_seats: int,
     preferred_rows: list[str] | None = None,
+    title_match: list[str] | None = None,
 ) -> int | None:
-    """Return available regular seat count, 0 if sold out, None if map did not load."""
+    """Return bookable seat count, 0 if none/sold out, None if map did not load."""
     if not await wait_for_amc_seat_map(page):
         body = (await page.locator("body").inner_text(timeout=5000)).lower()
         if "sold out" in body or "no seats available" in body:
@@ -240,21 +289,30 @@ async def count_amc_available_seats(
         return 0
 
     showtime_info = await _showtime_info_text(page)
-    if not showtime_info or not is_imax_70mm(showtime_info):
+    if title_match and showtime_info and not _showtime_matches_title(
+        showtime_info, title_match
+    ):
+        print("[seats] Skipping showtime — title does not match filter")
+        return 0
+
+    if not await _showtime_format_is_imax_70mm(page):
         if showtime_info:
             format_hint = showtime_info.replace("\n", " ")[:120]
             print(f"[seats] Skipping non-IMAX-70mm showtime: {format_hint}")
         return 0
 
     rows = [r.upper() for r in (preferred_rows or []) if r]
+    selectable = await find_seats_to_select(page, min_seats, preferred_rows)
+    if len(selectable) < min_seats:
+        try:
+            raw = await page.evaluate(_COUNT_AVAILABLE_SEATS_JS, rows)
+            if isinstance(raw, (int, float)) and raw >= min_seats:
+                print(
+                    f"[seats] {int(raw)} seat(s) in target rows but no group of "
+                    f"{min_seats} together — not alerting"
+                )
+        except Exception:
+            pass
+        return 0
 
-    try:
-        count = await page.evaluate(_COUNT_AVAILABLE_SEATS_JS, rows)
-    except Exception:
-        return None
-
-    if count is None:
-        return None
-    if isinstance(count, (int, float)):
-        return int(count)
-    return None
+    return len(selectable)

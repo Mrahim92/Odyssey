@@ -50,6 +50,9 @@ jobs:
           cat > config.yaml <<EOF
           movie:
             title_match: [odyssey]
+            amc_movie_name: "The Odyssey"
+            amc_format_name: "IMAX 70MM"
+            alert_label: "Odyssey IMAX 70mm"
             format_match: [imax 70mm, imax 70 mm, 70mm imax]
           monitor:
             start_date: "2026-08-21"

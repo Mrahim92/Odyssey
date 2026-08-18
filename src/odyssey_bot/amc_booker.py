@@ -8,13 +8,7 @@ from .amc_urls import normalize_amc_purchase_url
 from .config import Config
 from .models import Showtime
 
-USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/131.0.0.0 Safari/537.36"
-)
-
-
+from .browser_helpers import launch_browser, new_browser_context
 def _amc_login_file(config: Config):
     return config.browser_state_dir / "amc.json"
 
@@ -102,6 +96,7 @@ async def book_amc_on_current_page(page: Page, config: Config) -> tuple[bool, st
         page,
         config.min_seats,
         config.preferred_rows or None,
+        seat_groups=config.seat_groups or None,
     )
     if len(selected) < config.min_seats:
         return False, f"Could only select {len(selected)}/{config.min_seats} seats"
@@ -128,10 +123,14 @@ async def book_amc_showtime(showtime: Showtime, config: Config) -> tuple[bool, s
     ok = False
     message = "Booking failed"
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=False)
-        context = await browser.new_context(
+        browser, _ = await launch_browser(
+            playwright,
+            headless=False,
+            channel=config.browser_channel,
+        )
+        context = await new_browser_context(
+            browser,
             storage_state=state_file,
-            user_agent=USER_AGENT,
         )
         page = await context.new_page()
         try:
@@ -142,6 +141,12 @@ async def book_amc_showtime(showtime: Showtime, config: Config) -> tuple[bool, s
             )
             if not await wait_for_amc_seat_map(page):
                 return False, "Seat map did not load"
+
+            from .amc_seats import _showtime_format_is_imax_70mm
+
+            if not await _showtime_format_is_imax_70mm(page):
+                return False, "Showtime is not IMAX 70mm"
+
             ok, message = await book_amc_on_current_page(page, config)
             if ok and config.stop_before_payment:
                 print(

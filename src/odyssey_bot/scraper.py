@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass, field
+from datetime import date
 from urllib.parse import urljoin
 
 from playwright.async_api import Browser, Page, async_playwright
 
 from .amc_urls import normalize_amc_purchase_url
-from .browser_helpers import block_heavy_assets
+from .browser_helpers import block_heavy_assets, launch_browser, new_browser_context
 from .config import Config
 from .format_match import is_imax_70mm
 from .models import Showtime, Theater
@@ -96,11 +97,14 @@ async def _count_available_seats(
     min_seats: int,
     purchase_url: str = "",
     preferred_rows: list[str] | None = None,
+    title_match: list[str] | None = None,
 ) -> int | None:
     if "amctheatres.com" in purchase_url:
         from .amc_seats import count_amc_available_seats
 
-        return await count_amc_available_seats(page, min_seats, preferred_rows)
+        return await count_amc_available_seats(
+            page, min_seats, preferred_rows, title_match=title_match
+        )
 
     for selector in SEAT_AVAILABLE_SELECTORS:
         try:
@@ -226,19 +230,16 @@ async def _enrich_with_seat_counts(
     seen_urls: set[str] = set()
     skipped_cache = 0
 
-    context_kwargs: dict = {
-        "user_agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/131.0.0.0 Safari/537.36"
-        )
-    }
+    context_kwargs: dict = {}
     if config.auto_book:
         login_file = config.browser_state_dir / "amc.json"
         if login_file.exists():
             context_kwargs["storage_state"] = str(login_file)
 
-    context = await browser.new_context(**context_kwargs)
+    context = await new_browser_context(
+        browser,
+        storage_state=context_kwargs.get("storage_state"),
+    )
     page = await context.new_page()
     await block_heavy_assets(page)
 
@@ -290,10 +291,23 @@ async def _enrich_with_seat_counts(
                     config.min_seats,
                     seat_url,
                     config.preferred_rows or None,
+                    title_match=config.movie_title_match,
                 )
                 if state is not None and seats is not None and not config.auto_book:
                     state.cache_seats(seat_url, seats)
                 if seats is not None and seats >= config.min_seats:
+                    if config.seat_groups:
+                        from .amc_seats import find_seats_to_select
+
+                        selectable = await find_seats_to_select(
+                            page,
+                            config.min_seats,
+                            config.preferred_rows or None,
+                            seat_groups=config.seat_groups,
+                        )
+                        if len(selectable) < config.min_seats:
+                            continue
+
                     booked = False
                     book_message = ""
                     if config.auto_book and "amctheatres.com" in seat_url:
@@ -387,6 +401,37 @@ async def scan_theater_date(
     return await _enrich_with_seat_counts(browser, showtimes, config, state), errors
 
 
+def _showtimes_from_extra_urls(config: Config) -> list[Showtime]:
+    """Build showtime stubs for direct AMC URLs (e.g. insider dates dropped from dropdown)."""
+    if not config.extra_showtime_urls or not config.theaters:
+        return []
+
+    theater = config.theaters[0]
+    fallback_date = (
+        config.start_date.isoformat()
+        if config.start_date is not None
+        else date.today().isoformat()
+    )
+    showtimes: list[Showtime] = []
+
+    for raw_url in config.extra_showtime_urls:
+        purchase_url = normalize_amc_purchase_url(raw_url.strip())
+        if not purchase_url:
+            continue
+        match = re.search(r"/showtimes/(\d+)", purchase_url)
+        stub_time = f"url-{match.group(1)}" if match else purchase_url
+        showtimes.append(
+            Showtime(
+                theater=theater,
+                date=fallback_date,
+                time=stub_time,
+                format_label=config.amc_format_name,
+                purchase_url=purchase_url,
+            )
+        )
+    return showtimes
+
+
 async def scan_all(config: Config, state: StateStore | None = None) -> ScanResult:
     from .amc_scraper import scan_amc_theater
 
@@ -395,8 +440,10 @@ async def scan_all(config: Config, state: StateStore | None = None) -> ScanResul
     semaphore = asyncio.Semaphore(config.concurrency)
 
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(
-            headless=config.headless and not config.auto_book
+        browser, _ = await launch_browser(
+            playwright,
+            headless=config.headless and not config.auto_book,
+            channel=config.browser_channel,
         )
 
         async def run(theater: Theater, scan_date: str | None = None) -> tuple[list[Showtime], list[str]]:
@@ -415,29 +462,45 @@ async def scan_all(config: Config, state: StateStore | None = None) -> ScanResul
                     tasks.append(run(theater, scan_date))
 
         batches = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for batch in batches:
+            if isinstance(batch, Exception):
+                message = f"theater scan failed: {batch}"
+                print(f"[scan] ERROR: {message}")
+                errors.append(message)
+                continue
+            showtimes, batch_errors = batch
+            found.extend(showtimes)
+            errors.extend(batch_errors)
+
+        extra = _showtimes_from_extra_urls(config)
+        if extra:
+            print(f"[scan] Checking {len(extra)} direct showtime URL(s)...")
+            try:
+                found.extend(
+                    await _enrich_with_seat_counts(browser, extra, config, state)
+                )
+            except Exception as exc:  # noqa: BLE001
+                message = f"Direct showtime URL check failed: {exc}"
+                print(f"[scan] ERROR: {message}")
+                errors.append(message)
+
         await browser.close()
 
-    for batch in batches:
-        if isinstance(batch, Exception):
-            message = f"theater scan failed: {batch}"
-            print(f"[scan] ERROR: {message}")
-            errors.append(message)
-            continue
-        showtimes, batch_errors = batch
-        found.extend(showtimes)
-        errors.extend(batch_errors)
-
-    # Deduplicate by key, prefer entries with seat counts.
+    # Deduplicate by purchase URL, prefer entries with seat counts.
     deduped: dict[str, Showtime] = {}
     for showtime in found:
-        existing = deduped.get(showtime.key)
+        dedupe_key = showtime.purchase_url or showtime.key
+        existing = deduped.get(dedupe_key)
         if existing is None:
-            deduped[showtime.key] = showtime
+            deduped[dedupe_key] = showtime
         elif showtime.available_seats is not None and (
             existing.available_seats is None
             or showtime.available_seats > existing.available_seats
         ):
-            deduped[showtime.key] = showtime
+            deduped[dedupe_key] = showtime
+        elif showtime.booked and not existing.booked:
+            deduped[dedupe_key] = showtime
 
     return ScanResult(
         showtimes=sorted(
